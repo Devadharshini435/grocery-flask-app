@@ -1,0 +1,102 @@
+<nav class="navbar navbar-expand-lg navbar-dark position-relative">
+  <div class="container-fluid">
+
+    <!-- Logo -->
+    <a class="navbar-brand d-flex align-items-center" href="{{ url_for('home') }}">
+      <img src="{{ url_for('static', filename='images/logo.jpg') }}"
+           class="rounded-circle shadow me-2" width="40" height="40">
+      Dish2Cart
+    </a>
+
+    <button class="navbar-toggler" type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#navbarNav">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <!-- Center Search 
+    <div class="navbar-center d-none d-lg-flex">
+      <form class="d-flex w-100" method="GET">
+        <select class="form-select me-2">
+          <option selected>Search by Item</option>
+          <option>Search by Dish</option>
+        </select>
+        <input class="form-control me-2" placeholder="Search">
+        <button class="btn btn-outline-light">Search</button>
+      </form>
+    </div>-->
+  <form class="d-flex" action="/search" method="GET" style="width: 600px;">
+
+
+  <select class="form-select me-2" name="search_by">
+    <option value="item">Search by Item</option>
+    <option value="dish">Search by Dish</option>
+  </select>
+
+  <input class="form-control me-2"
+         type="search"
+         name="query"
+         placeholder="Search"
+         required>
+
+  <button class="btn btn-outline-light" type="submit">
+    Search
+  </button>
+
+</form>
+
+
+    <!-- Right Menu -->
+    <div class="collapse navbar-collapse justify-content-end" id="navbarNav">
+      <ul class="navbar-nav align-items-lg-center">
+
+        <li class="nav-item">
+          <a class="nav-link" href="{{ url_for('home') }}">Home</a>
+        </li>
+
+        <li class="nav-item">
+          <a class="nav-link" href="{{ url_for('products') }}">Products</a>
+        </li>
+
+        <!-- Add to Cart -->
+          <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('cart') }}">
+        Add to Cart
+        {% if cart_count > 0 %}
+            <span class="badge bg-danger ms-1">{{ cart_count }}</span>
+        {% endif %}
+    </a>
+</li>
+
+        <!-- My Orders -->
+        <li class="nav-item">
+          <a class="nav-link" href="{{ url_for('my_orders') }}">My Orders</a>
+        </li>
+
+        <!-- Profile -->
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+            {% if session.get('user_id') %}
+              <img src="{{ url_for('static', filename='images/profile.jpg') }}"
+                   width="30" height="30" class="rounded-circle">
+            {% else %}
+              <img src="{{ url_for('static', filename='images/male.png') }}"
+                   width="30" height="30">
+            {% endif %}
+          </a>
+
+          <ul class="dropdown-menu dropdown-menu-end">
+            {% if session.get('user_id') %}
+              <li><a class="dropdown-item" href="/profile">My Profile</a></li>
+              <li><a class="dropdown-item" href="/logout">Logout</a></li>
+            {% else %}
+              <li><a class="dropdown-item" href="/login">Login</a></li>
+              <li><a class="dropdown-item" href="/register">Register</a></li>
+            {% endif %}
+          </ul>
+        </li>
+
+      </ul>
+    </div>
+  </div>
+</nav>

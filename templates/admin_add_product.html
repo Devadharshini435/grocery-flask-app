@@ -1,0 +1,141 @@
+{% extends "admin_base.html" %}
+
+{% block content %}
+
+<style>
+.image-upload-box {
+    width: 220px;
+    height: 220px;
+    border: 2px dashed #bbb;
+    border-radius: 10px;
+    background-color: #f2f2f2;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+    margin: auto;
+}
+
+.image-upload-box:hover {
+    background-color: #e9e9e9;
+}
+
+.image-upload-box img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+}
+
+.plus-icon {
+    font-size: 48px;
+    color: #777;
+    position: absolute;
+}
+
+input[type="file"] {
+    display: none;
+}
+</style>
+
+<div class="container mt-4">
+    <div class="card shadow">
+        <div class="card-header bg-dark text-white">
+            <h5 class="mb-0">➕ Add Product</h5>
+        </div>
+
+        <div class="card-body">
+            <form method="POST" enctype="multipart/form-data">
+
+                <div class="row">
+                    <!-- IMAGE UPLOAD -->
+                    <div class="col-md-4 text-center mb-4">
+                        <label class="form-label fw-bold">Product Image</label>
+
+                        <div class="image-upload-box" id="uploadBox">
+                            <span class="plus-icon" id="plusIcon">+</span>
+                            <img id="previewImage" alt="Preview">
+                        </div>
+
+                        <input
+                            type="file"
+                            id="imageInput"
+                            name="image"
+                            accept="image/*"
+                            required
+                        >
+                    </div>
+
+                    <!-- PRODUCT DETAILS -->
+                    <div class="col-md-8">
+                        <div class="mb-3">
+                            <label class="form-label">Product Name</label>
+                            <input type="text" name="product_name" class="form-control" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Dish Name (Optional)</label>
+                            <input type="text" name="dish_name" class="form-control">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Category</label>
+                            <input type="text" name="category" class="form-control" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Description</label>
+                            <textarea name="description" rows="3" class="form-control" required></textarea>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Price (₹)</label>
+                                <input type="number" step="0.01" name="price" class="form-control" required>
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Stock</label>
+                                <input type="number" name="stock" class="form-control" required>
+                            </div>
+                        </div>
+
+                        <div class="text-end">
+                            <button type="submit" class="btn btn-success px-4">
+                                Save Product
+                            </button>
+                            <a href="{{ url_for('admin_products') }}" class="btn btn-secondary ms-2">
+                                Cancel
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+const uploadBox = document.getElementById("uploadBox");
+const imageInput = document.getElementById("imageInput");
+const previewImage = document.getElementById("previewImage");
+const plusIcon = document.getElementById("plusIcon");
+
+uploadBox.addEventListener("click", () => {
+    imageInput.click();
+});
+
+imageInput.addEventListener("change", () => {
+    const file = imageInput.files[0];
+    if (file) {
+        previewImage.src = URL.createObjectURL(file);
+        previewImage.style.display = "block";
+        plusIcon.style.display = "none";
+    }
+});
+</script>
+
+{% endblock %}

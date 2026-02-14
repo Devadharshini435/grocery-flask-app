@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Orders</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        .tab-btn{
+            border:none;
+            padding:8px 18px;
+            margin-right:6px;
+            border-radius:8px;
+            background:#e9ecef;
+            font-weight:600;
+        }
+
+        .tab-btn.active{
+            background:#0d6efd;
+            color:white;
+        }
+
+        .order-row{
+            transition:0.3s;
+        }
+    </style>
+</head>
+
+<body class="bg-light">
+
+{% extends "admin_base.html" %}
+{% block content %}
+
+<div class="container mt-4">
+
+    <h2 class="mb-3">Orders Management</h2>
+
+    <!-- Tabs -->
+    <div class="mb-4">
+        <button class="tab-btn active" onclick="filterOrders('All', this)">All</button>
+        <button class="tab-btn" onclick="filterOrders('Placed', this)">Placed</button>
+        <button class="tab-btn" onclick="filterOrders('Packed', this)">Packed</button>
+        <button class="tab-btn" onclick="filterOrders('Shipped', this)">Shipped</button>
+        <button class="tab-btn" onclick="filterOrders('Delivered', this)">Delivered</button>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-striped table-hover align-middle">
+
+            <thead class="table-dark">
+                <tr>
+                    <th>Order ID</th>
+                    <th>User ID</th>
+                    <th>Date</th>
+                    <th>Status</th>
+                    <th>Products</th>
+                    <th>Update</th>
+                </tr>
+            </thead>
+
+            <tbody>
+
+            {% for order in orders %}
+            <tr class="order-row" data-status="{{ order[3] }}">
+
+                <td>{{ order[0] }}</td>
+                <td>{{ order[1] }}</td>
+                <td>{{ order[2] }}</td>
+
+                <td>
+                    {% if order[3]=='Placed' %}
+                        <span class="badge bg-secondary">Placed</span>
+                    {% elif order[3]=='Packed' %}
+                        <span class="badge bg-warning text-dark">Packed</span>
+                    {% elif order[3]=='Shipped' %}
+                        <span class="badge bg-primary">Shipped</span>
+                    {% elif order[3]=='Delivered' %}
+                        <span class="badge bg-success">Delivered</span>
+                    {% endif %}
+                </td>
+
+                <td>
+                    <ul class="mb-0">
+                        {% for item in order_products[order[0]] %}
+                            <li>{{ item[0] }} × {{ item[1] }} — ₹{{ item[2] }}</li>
+                        {% endfor %}
+                    </ul>
+                </td>
+
+                <td>
+                    <form method="POST" class="d-flex gap-2">
+                        <input type="hidden" name="order_id" value="{{ order[0] }}">
+
+                        <select name="status" class="form-select form-select-sm">
+                            <option value="Placed" {% if order[3]=='Placed' %}selected{% endif %}>Placed</option>
+                            <option value="Packed" {% if order[3]=='Packed' %}selected{% endif %}>Packed</option>
+                            <option value="Shipped" {% if order[3]=='Shipped' %}selected{% endif %}>Shipped</option>
+                            <option value="Delivered" {% if order[3]=='Delivered' %}selected{% endif %}>Delivered</option>
+                        </select>
+
+                        <button class="btn btn-success btn-sm">Update</button>
+                    </form>
+                </td>
+
+            </tr>
+            {% endfor %}
+
+            </tbody>
+        </table>
+    </div>
+
+</div>
+
+<script>
+
+function filterOrders(status, btn){
+
+    let rows = document.querySelectorAll(".order-row");
+    let buttons = document.querySelectorAll(".tab-btn");
+
+    buttons.forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+
+    rows.forEach(row => {
+
+        let rowStatus = row.getAttribute("data-status");
+
+        if(status === "All" || rowStatus === status){
+            row.style.display = "";
+        }else{
+            row.style.display = "none";
+        }
+
+    });
+}
+
+</script>
+
+{% endblock %}
+</body>
+</html>

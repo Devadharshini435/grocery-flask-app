@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dish2Cart</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .navbar {
+      background-color: rgba(0, 0, 0, 0.5);
+    }
+
+    .navbar .nav-link,
+    .navbar .navbar-brand {
+      color: white;
+    }
+
+    .navbar-center {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 40%;
+    }
+
+    .hero-image img {
+      width: 100%;
+      display: block;
+    }
+
+    .content {
+      flex: 1;
+      padding: 20px;
+      text-align: center;
+    }
+
+    footer {
+      background-color: #343a40;
+      color: white;
+      padding: 15px 0;
+      text-align: center;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Navbar include -->
+  {% include 'navbar.html' %}
+
+  <!-- Banner -->
+  <div class="hero-image">
+    <img src="{{ url_for('static', filename='images/bg2.jpg') }}" alt="Banner">
+  </div>
+
+  <!-- Content -->
+  <div class="content">
+    <h2>Welcome to Dish2Cart!</h2>
+    <p>Search for your favorite dishes and order online easily.</p>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    &copy; 2026 Dish2Cart. All rights reserved.
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+{% extends "admin_base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Products List</h2>
+
+    <table class="table table-bordered table-hover mt-3">
+        <thead class="table-dark">
+            <tr>
+                <th>Image</th>
+                <th>Product Name</th>
+                <th>Price (₹)</th>
+                <th>Stock</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for product in products %}
+            <tr>
+                <td>
+                    <img src="{{ url_for('static', filename='uploads/' + product['image']) }}"
+                         width="80" height="60">
+                </td>
+                <td>{{ product['product_name'] }}</td>
+                <td>{{ product['price'] }}</td>
+                <td>{{ product['stock'] }}</td>
+                <td>
+                    <a href="/admin/edit-product/{{ product['id'] }}"
+                       class="btn btn-sm btn-warning">Edit</a>
+
+                    <a href="/admin/delete-product/{{ product['id'] }}"
+                         class="btn btn-sm btn-danger"
+                         onclick="return confirm('Are you sure?')">Delete</a>
+
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
