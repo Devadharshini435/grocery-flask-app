@@ -88,7 +88,7 @@
                 </td>
 
                 <td>
-                    <form method="POST" class="d-flex gap-2">
+                    <form method="POST" action="{{ url_for('update_order_status') }}" class="d-flex gap-2">
                         <input type="hidden" name="order_id" value="{{ order[0] }}">
 
                         <select name="status" class="form-select form-select-sm">

@@ -31,29 +31,94 @@ def admin_required(f):
     return decorated_function
 
 # 1️⃣ Define the function once
+def send_status_email(to_email, order_id, order_date, status):
 
-def send_status_email(to_email, order_id, order_date, status): 
     msg = EmailMessage()
-    msg['Subject'] = 'Order Status Updated'
-    msg['From'] = EMAIL_ADDRESS
-    msg['To'] = to_email
+    msg["Subject"] = "🎉 Your Order Has Been Delivered!"
+    msg["From"] = EMAIL_ADDRESS
+    msg["To"] = to_email
 
-    msg.set_content(f"""
-Hello,
+    # Plain text fallback
+    msg.set_content("Your order has been delivered successfully.")
 
-Your order has been updated successfully.
+    # HTML DESIGN EMAIL
+    html_content = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; background:#f4f6f8; padding:20px;">
 
-Order ID: {order_id}
-Order Date: {order_date}
-Current Status: {status}
+        <div style="
+            max-width:600px;
+            margin:auto;
+            background:white;
+            border-radius:10px;
+            overflow:hidden;
+            box-shadow:0 0 10px rgba(0,0,0,0.1);
+        ">
 
-Thank you for shopping with us.
-""")
+            <!-- Header -->
+            <div style="background:#28a745;color:white;padding:20px;text-align:center;">
+                <h2>Dish2Cart</h2>
+                <h3>✅ Order Delivered Successfully</h3>
+            </div>
 
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            <!-- Body -->
+            <div style="padding:25px;color:#333;">
+
+                <p>Hello Customer,</p>
+
+                <p>Your order has been <b style="color:green;">Delivered</b> 🎉</p>
+
+                <table style="width:100%;margin-top:15px;border-collapse:collapse;">
+                    <tr>
+                        <td style="padding:8px;"><b>Order ID</b></td>
+                        <td style="padding:8px;">#{order_id}</td>
+                    </tr>
+                    <tr style="background:#f2f2f2;">
+                        <td style="padding:8px;"><b>Order Date</b></td>
+                        <td style="padding:8px;">{order_date}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:8px;"><b>Status</b></td>
+                        <td style="padding:8px;color:green;"><b>{status}</b></td>
+                    </tr>
+                </table>
+
+                <p style="margin-top:20px;">
+                    Thank you for shopping with us ❤️<br>
+                    We hope to see you again!
+                </p>
+
+                <div style="text-align:center;margin-top:25px;">
+                    <a href="http://127.0.0.1:5000"
+                       style="
+                       background:#28a745;
+                       color:white;
+                       padding:12px 20px;
+                       text-decoration:none;
+                       border-radius:5px;
+                       font-weight:bold;">
+                       Continue Shopping
+                    </a>
+                </div>
+
+            </div>
+
+            <!-- Footer -->
+            <div style="background:#f1f1f1;padding:15px;text-align:center;font-size:12px;">
+                © 2026 Dish2Cart • Grocery Management System
+            </div>
+
+        </div>
+
+    </body>
+    </html>
+    """
+
+    msg.add_alternative(html_content, subtype="html")
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-        server.send_message(msg) 
-
+        server.send_message(msg)
 
 def send_new_product_email(description):
     try:
@@ -628,7 +693,7 @@ def payment():
         return render_template('payment.html', mode='buy_now', product=product, quantity=buy_now['quantity'], address=address)
     else:
         cur.execute("""
-            SELECT products.product_name, products.price, cart.quantity
+            SELECT products.product_name,products.price, cart.quantity
             FROM cart
             JOIN products ON cart.product_id = products.id
             WHERE cart.user_id = ?
@@ -841,6 +906,7 @@ def order_details(order_id):
 
     cur.execute("""
         SELECT products.product_name,
+        products.image,
                order_items.quantity,
                order_items.price
         FROM order_items
@@ -904,12 +970,17 @@ def cancel_order(order_id):
     conn.commit()
     conn.close()
     return redirect(url_for('my_orders'))
+@app.route('/update_order_status', methods=['POST'])
+def update_order_status():
 
-@app.route('/update_order_status/<int:order_id>/<status>')
-def update_order_status(order_id, status):
+    order_id = request.form['order_id']
+    status = request.form['status']
+
     conn = sqlite3.connect('database.db')
+    conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
+    # Update order
     cur.execute("""
         UPDATE orders
         SET status = ?
@@ -917,10 +988,31 @@ def update_order_status(order_id, status):
     """, (status, order_id))
 
     conn.commit()
+
+    # Get user email
+    cur.execute("""
+        SELECT users.email, orders.order_date
+        FROM orders
+        JOIN users ON orders.user_id = users.id
+        WHERE orders.id = ?
+    """, (order_id,))
+
+    order = cur.fetchone()
     conn.close()
 
-    return redirect(url_for('my_orders'))
+    print("STATUS:", status)
 
+    # ✅ Send mail when delivered
+    if order and status.lower() == "delivered":
+        print("Sending email...")
+        send_status_email(
+            order["email"],
+            order_id,
+            order["order_date"],
+            status
+        )
+
+    return redirect(url_for('admin_orders'))
 
 @app.route('/my_orders')
 def my_orders():
@@ -1413,6 +1505,17 @@ def delete_product(product_id):
 
     conn.close()
     return redirect(url_for("admin_products"))
+
+
+@app.route("/test_mail")
+def test_mail():
+    send_status_email(
+        "devadharshiniramachandran435@gmail.com",
+        1,
+        "Today",
+        "Delivered"
+    )
+    return "Mail Sent"
 
 
 if __name__ == "__main__":
