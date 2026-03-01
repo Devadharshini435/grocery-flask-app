@@ -14,17 +14,6 @@
       <span class="navbar-toggler-icon"></span>
     </button>
 
-    <!-- Center Search 
-    <div class="navbar-center d-none d-lg-flex">
-      <form class="d-flex w-100" method="GET">
-        <select class="form-select me-2">
-          <option selected>Search by Item</option>
-          <option>Search by Dish</option>
-        </select>
-        <input class="form-control me-2" placeholder="Search">
-        <button class="btn btn-outline-light">Search</button>
-      </form>
-    </div>-->
   <form class="d-flex" action="/search" method="GET" style="width: 600px;">
 
 
@@ -62,7 +51,7 @@
           <li class="nav-item">
     <a class="nav-link" href="{{ url_for('cart') }}">
         Add to Cart
-        {% if cart_count > 0 %}
+   <!---->     {% if cart_count > 0 %}
             <span class="badge bg-danger ms-1">{{ cart_count }}</span>
         {% endif %}
     </a>
@@ -76,7 +65,7 @@
         <!-- Profile -->
         <li class="nav-item dropdown">
           <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
-            {% if session.get('user_id') %}
+            {% if session.get('customer_id') %}
               <img src="{{ url_for('static', filename='images/profile.jpg') }}"
                    width="30" height="30" class="rounded-circle">
             {% else %}
@@ -86,7 +75,7 @@
           </a>
 
           <ul class="dropdown-menu dropdown-menu-end">
-            {% if session.get('user_id') %}
+            {% if session.get('customer_id') %}
               <li><a class="dropdown-item" href="/profile">My Profile</a></li>
               <li><a class="dropdown-item" href="/logout">Logout</a></li>
             {% else %}

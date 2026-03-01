@@ -1,5 +1,9 @@
+import email
 from flask import Flask, render_template, request, redirect, url_for, session,flash, sessions
 import sqlite3
+import pymysql
+pymysql.install_as_MySQLdb()
+from flask_mysqldb import MySQL
 from werkzeug.utils import secure_filename
 from functools import wraps
 import json
@@ -14,6 +18,13 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import smtplib
 from email.message import EmailMessage
 app = Flask(__name__)
+app.config['MYSQL_HOST'] = 'localhost'
+app.config['MYSQL_USER'] = 'root'
+app.config['MYSQL_PASSWORD'] = 'Avc@1234'
+app.config['MYSQL_DB'] = 'grocery_db'
+app.config['MYSQL_CURSORCLASS'] = 'DictCursor'
+
+mysql = MySQL(app)
 EMAIL_ADDRESS = "devadharshiniramachandran435@gmail.com"
 EMAIL_PASSWORD = "vadk tqhr arsr ltfi"
 app.secret_key = "12345"  # Session secret key
@@ -21,6 +32,38 @@ OTP_EXPIRY = 300
 UPLOAD_FOLDER = "static/uploads"
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
+
+# ---------- Register ----------
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        name = request.form["name"].strip()
+        email = request.form["email"].strip().lower()
+        password = request.form["password"].strip()
+
+        cur = mysql.connection.cursor()
+
+        cur.execute(
+            "SELECT customer_id FROM customer WHERE customer_email = %s",
+            (email,)
+        )
+        if cur.fetchone():
+            cur.close()
+            return render_template("register.html", error="Email already exists")
+
+        cur.execute(
+            """
+            INSERT INTO customer (customer_name, customer_email, customer_password)
+            VALUES (%s, %s, %s)
+            """,
+            (name, email, password)
+        )
+        mysql.connection.commit()
+        cur.close()
+
+        return redirect(url_for("login"))
+
+    return render_template("register.html")
 
 def admin_required(f):
     @wraps(f)
@@ -120,6 +163,111 @@ def send_status_email(to_email, order_id, order_date, status):
         server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         server.send_message(msg)
 
+
+@app.route('/set-password', methods=['POST', 'GET'])
+def set_password():
+    if request.method == 'POST':
+        password = request.form['password']
+        confirm = request.form['confirm_password']
+
+        if password != confirm:
+            return "Passwords do not match"
+
+        
+        name = session.get('name')   # ✅ Get name from session
+        email = session.get('email')
+        
+
+        conn = mysql.connection
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO customer (customer_name, customer_email, customer_password) VALUES (%s, %s, %s)",
+                       (name, email, password))
+        conn.commit()
+        cursor.close()
+        send_account_created_email(email, name)
+        session.clear()
+        return render_template("account_created.html")
+
+
+    return render_template('set_password.html')
+
+@app.route('/verify-otp', methods=['GET', 'POST'])
+def verify_otp():
+    email = request.form.get('email') or request.args.get('email')
+
+
+    if request.method == 'POST':
+        user_otp = request.form['otp']
+
+        cursor = mysql.connection.cursor()
+        cursor.execute(
+    """
+    SELECT otp 
+    FROM email_otp 
+    WHERE email = %s 
+    AND created_at >= NOW() - INTERVAL 5 MINUTE
+    """,
+    (email,)
+)
+        record = cursor.fetchone()
+
+        if not record:
+            return "OTP expired or not found. Please resend."
+
+        stored_otp = record['otp']
+
+        if user_otp != stored_otp:
+            return "Invalid OTP"
+
+        return redirect(url_for('set_password', email=email))
+
+    return render_template('verify_otp.html', email=email)
+
+@app.route('/send-otp', methods=['POST'])
+def send_otp():
+    # 1️⃣ Get data from form
+    name = request.form['name'].strip()
+    email = request.form['email'].strip().lower()
+
+    # 2️⃣ Open database
+    conn = mysql.connection
+    cursor = conn.cursor()
+
+    # 3️⃣ Check if email already exists
+    cursor.execute("SELECT customer_id FROM customer WHERE customer_email = %s", (email,))
+    if cursor.fetchone():
+        conn.close()
+        return redirect(url_for('register', error="Email already registered"))
+
+    # 4️⃣ Generate OTP
+    otp = generate_otp()
+    current_time = int(time.time())
+
+    # 5️⃣ Store required data in session (NOT OTP)
+    session['name'] = name
+    session['email'] = email
+
+    # 6️⃣ Remove old OTP and insert new one
+    cursor.execute("DELETE FROM email_otp WHERE email = %s", (email,))
+    cursor.execute(
+        "INSERT INTO email_otp (email, otp) VALUES (%s, %s)",
+        (email, otp)
+    )
+
+    # 7️⃣ Save and close DB
+    conn.commit()
+    cursor.close()
+
+    # 8️⃣ TEMP debug (remove later)
+    print("OTP for", email, "is", otp)
+    send_otp_email(email, otp)
+
+
+    # 9️⃣ Go to verify page
+    return redirect(url_for('verify_otp', email=email))
+
+
+
 def send_new_product_email(description):
     try:
         conn = get_db()
@@ -204,82 +352,58 @@ def get_db():
 def home():
     return render_template("home.html")
 
-# ---------- Register ----------
-@app.route("/register", methods=["GET", "POST"])
-def register():
-    if request.method == "POST":
-        name = request.form["name"]
-        email = request.form["email"]
-        password = request.form["password"]
-
-        conn = get_db()
-        cur = conn.cursor()
-
-        # Check if email already exists
-        cur.execute("SELECT * FROM users WHERE email=?", (email,))
-        existing = cur.fetchone()
-        if existing:
-            conn.close()
-            return render_template("register.html", error="Email already exists")
-
-        # Insert new user into database
-        cur.execute(
-            "INSERT INTO users (name, email, password) VALUES (?, ?, ?)",
-            (name, email, password)
-        )
-        conn.commit()
-        conn.close()
-
-        # Redirect to login page (manual login)
-        return redirect(url_for("login"))
-
-    return render_template("register.html")
-
 # ---------- Login ----------
-
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        email = request.form["email"].strip().lower()
-        password = request.form["password"]
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "").strip()
 
-        conn = get_db()
-        cur = conn.cursor()
-        # Fetch user by email only
-        cur.execute("SELECT * FROM users WHERE email=?", (email,))
-        user = cur.fetchone()
-        conn.close()
+        cursor = mysql.connection.cursor(pymysql.cursors.DictCursor)
+        cursor.execute(
+            "SELECT customer_id, customer_name, customer_email, customer_password "
+            "FROM customer WHERE customer_email = %s",
+            (email,)
+        )
+        user = cursor.fetchone()
+        cursor.close()
 
-        # Verify password hash
-        if user and check_password_hash(user["password"], password):
-            session["user_id"] = user["id"]
-            session["user_name"] = user["name"]
-            session["user_email"] = user["email"]
-            session["profile_img"] = url_for('static', filename='images/male.png')
-
-            return redirect(url_for("home"))
-        else:
-            # Show error message in login page
+        if not user:
+            print("NO USER FOUND")
             return render_template("login.html", error="Invalid login details")
+
+        db_password = str(user["customer_password"]).strip()
+
+        if password != db_password:
+            print("PASSWORD MISMATCH")
+            return render_template("login.html", error="Invalid login details")
+
+        session["customer_id"] = user["customer_id"]
+        session["customer_name"] = user["customer_name"]
+        session["customer_email"] = user["customer_email"]
+
+        print("LOGIN SUCCESS")
+        return redirect(url_for("home"))
 
     return render_template("login.html")
 
-
-
 @app.context_processor
 def cart_count_processor():
-    user_id = session.get('user_id')
+    user_id = session.get("customer_id")  # FIXED KEY
+
     if not user_id:
         return dict(cart_count=0)
 
-    conn = sqlite3.connect('database.db')
-    cur = conn.cursor()
-    cur.execute("SELECT SUM(quantity) FROM cart WHERE user_id=?", (user_id,))
-    count = cur.fetchone()[0] or 0
-    conn.close()
-    return dict(cart_count=count)
+    cursor = mysql.connection.cursor(pymysql.cursors.DictCursor)  # FIXED CURSOR
+    cursor.execute(
+        "SELECT COALESCE(SUM(quantity), 0) AS total FROM cart WHERE user_id = %s",
+        (user_id,)
+    )
+    result = cursor.fetchone()
+    cursor.close()
 
+    return dict(cart_count=result["total"] if result else 0)
 # ---------- Profile ----------
 @app.route("/profile")
 def profile():
@@ -513,107 +637,6 @@ def cart_checkout():
         cart_items=cart_items,
         total_price=total_price
     )
-
-@app.route('/set-password', methods=['POST', 'GET'])
-def set_password():
-    if request.method == 'POST':
-        password = request.form['password']
-        confirm = request.form['confirm_password']
-
-        if password != confirm:
-            return "Passwords do not match"
-
-        hashed_password = generate_password_hash(password)
-        name = session.get('name')   # ✅ Get name from session
-        email = session.get('email')
-
-        conn = sqlite3.connect('database.db')
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO users (name, email, password) VALUES (?, ?, ?)",
-                       (name, email, hashed_password))
-        conn.commit()
-        conn.close()
-        send_account_created_email(email, name)
-        session.clear()
-        return render_template("account_created.html")
-
-
-    return render_template('set_password.html')
-
-@app.route('/verify-otp', methods=['GET', 'POST'])
-def verify_otp():
-    email = request.form.get('email') or request.args.get('email')
-
-
-    if request.method == 'POST':
-        user_otp = request.form['otp']
-
-        cursor = get_db().cursor()
-        cursor.execute(
-            "SELECT otp, created_at FROM email_otp WHERE email=?",
-            (email,)
-        )
-        record = cursor.fetchone()
-
-        if not record:
-            return "OTP not found. Please resend."
-
-        stored_otp, stored_time = record
-        current_time = int(time.time())
-
-        if current_time - stored_time > OTP_EXPIRY:
-            return "OTP expired. Please resend."
-
-        if user_otp != stored_otp:
-            return "Invalid OTP"
-
-        return redirect(url_for('set_password', email=email))
-
-    return render_template('verify_otp.html', email=email)
-
-@app.route('/send-otp', methods=['POST'])
-def send_otp():
-    # 1️⃣ Get data from form
-    name = request.form['name'].strip()
-    email = request.form['email'].strip().lower()
-
-    # 2️⃣ Open database
-    conn = sqlite3.connect('database.db')
-    cursor = conn.cursor()
-
-    # 3️⃣ Check if email already exists
-    cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
-    if cursor.fetchone():
-        conn.close()
-        return redirect(url_for('register', error="Email already registered"))
-
-    # 4️⃣ Generate OTP
-    otp = generate_otp()
-    current_time = int(time.time())
-
-    # 5️⃣ Store required data in session (NOT OTP)
-    session['name'] = name
-    session['email'] = email
-
-    # 6️⃣ Remove old OTP and insert new one
-    cursor.execute("DELETE FROM email_otp WHERE email = ?", (email,))
-    cursor.execute(
-        "INSERT INTO email_otp (email, otp, created_at) VALUES (?, ?, ?)",
-        (email, otp, current_time)
-    )
-
-    # 7️⃣ Save and close DB
-    conn.commit()
-    conn.close()
-
-    # 8️⃣ TEMP debug (remove later)
-    print("OTP for", email, "is", otp)
-    send_otp_email(email, otp)
-
-
-    # 9️⃣ Go to verify page
-    return redirect(url_for('verify_otp', email=email))
-
 
 
 @app.route('/address', methods=['GET', 'POST'])
