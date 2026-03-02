@@ -397,7 +397,7 @@ def cart_count_processor():
 
     cursor = mysql.connection.cursor(pymysql.cursors.DictCursor)  # FIXED CURSOR
     cursor.execute(
-        "SELECT COALESCE(SUM(quantity), 0) AS total FROM cart WHERE user_id = %s",
+        "SELECT COALESCE(SUM(quantity), 0) AS total FROM cart WHERE customer_id = %s",
         (user_id,)
     )
     result = cursor.fetchone()
@@ -405,27 +405,29 @@ def cart_count_processor():
 
     return dict(cart_count=result["total"] if result else 0)
 # ---------- Profile ----------
+
 @app.route("/profile")
 def profile():
-    if "user_id" not in session:
-        return redirect("/login")
+    if "customer_id" not in session:
+        return redirect(url_for("login"))
 
-    user_id = session["user_id"]
+    customer_id = session["customer_id"]
 
-    conn = get_db()
-    cur = conn.cursor()
+    cur = mysql.connection.cursor()
 
     cur.execute("""
-        SELECT name, email, reward_points
-        FROM users
-        WHERE id=?
-    """, (user_id,))
+        SELECT
+            customer_name,
+            customer_email,
+            reward_points
+        FROM customer
+        WHERE customer_id = %s
+    """, (customer_id,))
 
     user = cur.fetchone()
-    conn.close()
+    cur.close()
 
     return render_template("profile.html", user=user)
-
 
 # ---------- Logout ----------
 @app.route('/logout')
@@ -436,11 +438,10 @@ def logout():
 
 # ---------- Products Page (optional) ----------
 
-
 @app.route('/products')
 def products():
     # Step 1: Check if user is logged in
-    if 'user_id' not in session:
+    if 'customer_id' not in session:
         flash("Please login to see products")
         return redirect(url_for('login'))
 
@@ -448,13 +449,11 @@ def products():
     show_all_category = request.args.get('category')
     show_all_flag = request.args.get('show_all')
 
-    # Step 3: Connect to database
-    conn = sqlite3.connect('database.db')
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
+    # Step 3: Connect to MySQL database
+    cur = mysql.connection.cursor()
     cur.execute("SELECT * FROM products ORDER BY category")
     rows = cur.fetchall()
-    conn.close()
+    cur.close()
 
     # Step 4: Group products by category
     from collections import defaultdict
@@ -469,9 +468,13 @@ def products():
             categories[cat] = items
         else:
             categories[cat] = items[:5]
-    # Step 6: Render template
-    return render_template('products.html', categories=categories, all_categories=all_categories)
 
+    # Step 6: Render template
+    return render_template(
+        'products.html',
+        categories=categories,
+        all_categories=all_categories
+    )
 @app.route('/orders')
 def orders():
     return render_template('orders.html')
@@ -481,55 +484,52 @@ def search():
     query = request.args.get('query', '').strip().lower()
     search_by = request.args.get('search_by', 'item').strip()
 
-    conn = sqlite3.connect('database.db')
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-
+    cur = mysql.connection.cursor()
     results = []
 
     if search_by == 'dish':
-        cursor.execute("SELECT * FROM products")
-        rows = cursor.fetchall()
+        # Fetch all products (dish_name needs Python-side processing)
+        cur.execute("SELECT * FROM products")
+        rows = cur.fetchall()
 
         for row in rows:
-            if row['dish_name']:  # skip empty
-                # split multiple dishes
+            if row['dish_name']:  # skip empty / NULL
                 dishes = [d.strip().lower() for d in row['dish_name'].split(',')]
-                # check if query matches any dish partially
                 if any(query in dish for dish in dishes):
                     results.append(row)
-    else:  # search by item
-        cursor.execute("""
-            SELECT * FROM products
-            WHERE LOWER(product_name) LIKE ?
-        """, ('%' + query + '%',))
-        results = cursor.fetchall()
 
-    conn.close()
+    else:  # search by item (product_name)
+        cur.execute("""
+            SELECT * FROM products
+            WHERE LOWER(product_name) LIKE %s
+        """, ('%' + query + '%',))
+        results = cur.fetchall()
+
+    cur.close()
 
     return render_template(
         'products.html',
         results=results,
         query=query
     )
-
 @app.route('/product/<int:pid>', methods=['GET', 'POST'])
 def product_detail(pid):
     # ✅ STEP 0: Get logged-in user
-    user_id = session.get('user_id')
+    user_id = session.get('customer_id')
     if not user_id:
         return redirect(url_for('login'))
 
-    # ✅ STEP 1: Get product details
-    conn = sqlite3.connect('database.db')
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
+    # ✅ STEP 1: Get product details (MySQL)
+    cur = mysql.connection.cursor()
 
-    cur.execute("SELECT * FROM products WHERE id = ?", (pid,))
+    cur.execute(
+        "SELECT * FROM products WHERE product_id = %s",
+        (pid,)
+    )
     product = cur.fetchone()
-    conn.close()
 
     if not product:
+        cur.close()
         return "Product not found"
 
     quantity = 1  # default quantity
@@ -542,47 +542,49 @@ def product_detail(pid):
 
         # -------- STOCK CHECK --------
         if product['stock'] == 0:
+            cur.close()
             return redirect(url_for('product_detail', pid=pid))
 
         # -------- BUY NOW --------
         if action == 'buy':
-           session['buy_now'] = {
-             'product_id': pid,
-             'quantity': quantity
-              }
-           return redirect(url_for('checkout'))
+            session['buy_now'] = {
+                'product_id': pid,
+                'quantity': quantity
+            }
+            cur.close()
+            return redirect(url_for('checkout'))
 
         # -------- ADD TO CART --------
         elif action == 'add_to_cart':
-            conn = sqlite3.connect('database.db')
-            cur = conn.cursor()
 
             # Check if item already in cart
             cur.execute(
-                "SELECT id, quantity FROM cart WHERE user_id=? AND product_id=?",
+                "SELECT cart_id, quantity FROM cart WHERE user_id = %s AND product_id = %s",
                 (user_id, pid)
             )
             existing = cur.fetchone()
 
             if existing:
                 # Update quantity
-                new_qty = existing[1] + quantity
+                new_qty = existing['quantity'] + quantity
                 cur.execute(
-                    "UPDATE cart SET quantity=? WHERE id=?",
-                    (new_qty, existing[0])
+                    "UPDATE cart SET quantity = %s WHERE cart_id = %s",
+                    (new_qty, existing['cart_id'])
                 )
             else:
                 # Insert new
                 cur.execute(
-                    "INSERT INTO cart (user_id, product_id, quantity) VALUES (?, ?, ?)",
+                    "INSERT INTO cart (user_id, product_id, quantity) VALUES (%s, %s, %s)",
                     (user_id, pid, quantity)
                 )
 
-            conn.commit()
-            conn.close()
+            mysql.connection.commit()
+            cur.close()
 
             # Stay on product page after adding to cart
             return redirect(url_for('product_detail', pid=pid))
+
+    cur.close()
 
     # ✅ STEP 3: Calculate total price for display
     total_price = product['price'] * quantity
@@ -594,7 +596,6 @@ def product_detail(pid):
         quantity=quantity,
         total_price=total_price
     )
-
 @app.route('/checkout')
 def checkout():
     buy_now = session.get('buy_now')
@@ -602,13 +603,14 @@ def checkout():
     if not buy_now:
         return "No product selected for Buy Now"
 
-    conn = sqlite3.connect('database.db')
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
+    cur = mysql.connection.cursor()
 
-    cur.execute("SELECT * FROM products WHERE id=?", (buy_now['product_id'],))
+    cur.execute(
+        "SELECT * FROM products WHERE product_id = %s",
+        (buy_now['product_id'],)
+    )
     product = cur.fetchone()
-    conn.close()
+    cur.close()
 
     if not product:
         return "Product not found"
@@ -617,7 +619,7 @@ def checkout():
 
     return render_template(
         'checkout.html',
-        mode='buy_now',          # ✅ THIS WAS MISSING
+        mode='buy_now',
         product=product,
         quantity=buy_now['quantity'],
         total=total
@@ -625,12 +627,34 @@ def checkout():
 
 @app.route('/cart_checkout')
 def cart_checkout():
-    cart_items = session.get('cart', [])
+    user_id = session.get('customer_id')
+    if not user_id:
+        return redirect(url_for('login'))
+
+    cur = mysql.connection.cursor()
+
+    cur.execute("""
+        SELECT 
+            p.product_id,
+            p.product_name,
+            p.price,
+            p.image,
+            c.quantity
+        FROM cart c
+        JOIN products p ON c.product_id = p.product_id
+        WHERE c.user_id = %s
+    """, (user_id,))
+
+    cart_items = cur.fetchall()
+    cur.close()
 
     if not cart_items:
         return "Your cart is empty"
 
-    total_price = sum(item['price'] * item['quantity'] for item in cart_items)
+    total_price = sum(
+        item['price'] * item['quantity']
+        for item in cart_items
+    )
 
     return render_template(
         'cart_checkout.html',
@@ -638,44 +662,53 @@ def cart_checkout():
         total_price=total_price
     )
 
-
 @app.route('/address', methods=['GET', 'POST'])
 def address():
-    user_id = session.get('user_id')
-    if not user_id:
+    customer_id = session.get('customer_id')   # user_id == customer_id
+    if not customer_id:
         return redirect(url_for('login'))
 
-    conn = sqlite3.connect('database.db')
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
+    cur = mysql.connection.cursor()
 
-    # Pre-fill address if exists
-    cur.execute("SELECT * FROM user_addresses WHERE user_id=?", (user_id,))
-    existing_address = cur.fetchone()
+    # 🔹 Fetch existing customer address details
+    cur.execute("""
+        SELECT customer_name, phone, address, city, pincode
+        FROM customer
+        WHERE customer_id = %s
+    """, (customer_id,))
+    customer = cur.fetchone()
 
     if request.method == 'POST':
-        name = request.form['name']
-        phone = request.form['phone']
-        address_text = request.form['address']
-        city = request.form['city']
-        pincode = request.form['pincode']
+        name = request.form['name'].strip()
+        phone = request.form['phone'].strip()
+        address_text = request.form['address'].strip()
+        city = request.form['city'].strip()
+        pincode = request.form['pincode'].strip()
 
-        if existing_address:
-            cur.execute("""
-                UPDATE user_addresses
-                SET name=?, phone=?, address=?, city=?, pincode=?
-                WHERE user_id=?
-            """, (name, phone, address_text, city, pincode, user_id))
-        else:
-            cur.execute("""
-                INSERT INTO user_addresses (user_id, name, phone, address, city, pincode)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (user_id, name, phone, address_text, city, pincode))
+        # 🔐 Basic validation
+        if not phone.isdigit() or len(phone) != 10:
+            cur.close()
+            return "Invalid phone number"
 
-        conn.commit()
-        conn.close()
+        if not pincode.isdigit() or len(pincode) != 6:
+            cur.close()
+            return "Invalid pincode"
 
-        # Save in session for current checkout
+        # 🔹 Update customer address info
+        cur.execute("""
+            UPDATE customer
+            SET customer_name = %s,
+                phone = %s,
+                address = %s,
+                city = %s,
+                pincode = %s
+            WHERE customer_id = %s
+        """, (name, phone, address_text, city, pincode, customer_id))
+
+        mysql.connection.commit()
+        cur.close()
+
+        # 🔹 Store address in session for checkout flow
         session['address'] = {
             'name': name,
             'phone': phone,
@@ -686,13 +719,13 @@ def address():
 
         return redirect(url_for('payment'))
 
-    conn.close()
-    return render_template('address.html', address=existing_address)
+    cur.close()
+    return render_template('address.html', address=customer)
 
 @app.route('/payment', methods=['GET', 'POST'])
 def payment():
-    user_id = session.get('user_id')
-    if not user_id:
+    customer_id = session.get('customer_id')
+    if not customer_id:
         return redirect(url_for('login'))
 
     address = session.get('address')
@@ -700,67 +733,94 @@ def payment():
         return redirect(url_for('address'))
 
     buy_now = session.get('buy_now')
+    cur = mysql.connection.cursor()   # ✅ FIXED
 
-    conn = sqlite3.connect('database.db')
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-
+    # 🔹 Handle payment submission
     if request.method == 'POST':
         session['payment_method'] = request.form['payment_method']
+        cur.close()
         return redirect(url_for('place_order'))
 
+    # ================= BUY NOW FLOW =================
     if buy_now:
-        cur.execute("SELECT * FROM products WHERE id=?", (buy_now['product_id'],))
+        cur.execute(
+            "SELECT * FROM products WHERE product_id = %s",
+            (buy_now['product_id'],)
+        )
         product = cur.fetchone()
-        conn.close()
-        return render_template('payment.html', mode='buy_now', product=product, quantity=buy_now['quantity'], address=address)
-    else:
-        cur.execute("""
-            SELECT products.product_name,products.price, cart.quantity
-            FROM cart
-            JOIN products ON cart.product_id = products.id
-            WHERE cart.user_id = ?
-        """, (user_id,))
-        cart_items = cur.fetchall()
-        total_price = sum(item['price'] * item['quantity'] for item in cart_items)
-        conn.close()
-        return render_template('payment.html', mode='cart', cart_items=cart_items, total_price=total_price, address=address)
+        cur.close()
 
+        if not product:
+            return "Product not found"
+
+        return render_template(
+            'payment.html',
+            mode='buy_now',
+            product=product,
+            quantity=buy_now['quantity'],
+            address=address
+        )
+
+    # ================= CART FLOW =================
+    cur.execute("""
+        SELECT 
+            p.product_name,
+            p.price,
+            c.quantity
+        FROM cart c
+        JOIN products p ON c.product_id = p.product_id
+        WHERE c.customer_id = %s
+    """, (customer_id,))
+
+    cart_items = cur.fetchall()
+    cur.close()
+
+    if not cart_items:
+        return "Your cart is empty"
+
+    total_price = sum(item['price'] * item['quantity'] for item in cart_items)
+
+    return render_template(
+        'payment.html',
+        mode='cart',
+        cart_items=cart_items,
+        total_price=total_price,
+        address=address
+    )
 
 @app.route('/cart')
 def cart():
-    user_id = session.get('user_id')
-    if not user_id:
-         return redirect(url_for('login'))
+    customer_id = session.get('customer_id')
+    if not customer_id:
+        return redirect(url_for('login'))
 
-
-    conn = sqlite3.connect('database.db')
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
+    cur = mysql.connection.cursor()
 
     cur.execute("""
-        SELECT cart.id AS cart_id,
-               products.product_name,
-                products.image,
-               products.price,
-               cart.quantity,
-               (products.price * cart.quantity) AS total
-        FROM cart
-        JOIN products ON cart.product_id = products.id
-        WHERE cart.user_id = ?
-    """, (user_id,))
+        SELECT 
+            c.cart_id,
+            p.product_name,
+            p.image,
+            p.price,
+            c.quantity,
+            (p.price * c.quantity) AS total
+        FROM cart c
+        JOIN products p ON c.product_id = p.product_id
+        WHERE c.customer_id = %s
+    """, (customer_id,))
+
     cart_items = cur.fetchall()
 
     # 🔢 Cart count
     cur.execute(
-        "SELECT SUM(quantity) FROM cart WHERE user_id=?",
-        (user_id,)
+        "SELECT COALESCE(SUM(quantity), 0) AS cart_count FROM cart WHERE customer_id = %s",
+        (customer_id,)
     )
-    cart_count = cur.fetchone()[0] or 0
+    cart_count = cur.fetchone()['cart_count']
 
     grand_total = sum(item['total'] for item in cart_items)
 
-    conn.close()
+    cur.close()
 
     return render_template(
         'cart.html',
@@ -771,312 +831,323 @@ def cart():
 
 @app.route('/cart/increase/<int:cart_id>')
 def increase_quantity(cart_id):
-    conn = sqlite3.connect('database.db')
-    cur = conn.cursor()
+    cur = mysql.connection.cursor()
 
     cur.execute(
-        "UPDATE cart SET quantity = quantity + 1 WHERE id = ?",
+        "UPDATE cart SET quantity = quantity + 1 WHERE cart_id = %s",
         (cart_id,)
     )
 
-    conn.commit()
-    conn.close()
-    return redirect(url_for('cart'))
+    mysql.connection.commit()
+    cur.close()
 
+    return redirect(url_for('cart'))
 
 @app.route('/cart/decrease/<int:cart_id>')
 def decrease_quantity(cart_id):
-    conn = sqlite3.connect('database.db')
-    cur = conn.cursor()
+    cur = mysql.connection.cursor()
 
-    # Prevent quantity going below 1
-    cur.execute(
-        "UPDATE cart SET quantity = CASE WHEN quantity > 1 THEN quantity - 1 ELSE 1 END WHERE id = ?",
-        (cart_id,)
-    )
-    conn.commit()
-    conn.close()
+    cur.execute("""
+        UPDATE cart
+        SET quantity = CASE 
+            WHEN quantity > 1 THEN quantity - 1 
+            ELSE 1 
+        END
+        WHERE cart_id = %s
+    """, (cart_id,))
+
+    mysql.connection.commit()
+    cur.close()
+
     return redirect(url_for('cart'))
+
 @app.route('/remove_cart/<int:cart_id>', methods=['POST'])
 def remove_cart(cart_id):
-    conn = sqlite3.connect('database.db')
-    cur = conn.cursor()
-    cur.execute("DELETE FROM cart WHERE id=?", (cart_id,))
-    conn.commit()
-    conn.close()
+    cur = mysql.connection.cursor()
+
+    cur.execute(
+        "DELETE FROM cart WHERE cart_id = %s",
+        (cart_id,)
+    )
+
+    mysql.connection.commit()
+    cur.close()
+
     return redirect(url_for('cart'))
 
 @app.route('/place_order')
 def place_order():
-    user_id = session.get('user_id')
-    if not user_id:
+    customer_id = session.get('customer_id')
+    if not customer_id:
         return redirect(url_for('login'))
 
-    address_dict = session.get('address')
+    address = session.get('address')
     payment_method = session.get('payment_method', 'COD')
-    if not address_dict:
+
+    if not address:
         return redirect(url_for('address'))
 
-    # Convert address dict → JSON string
-    address = json.dumps(address_dict)
+    cur = mysql.connection.cursor()
 
-    conn = sqlite3.connect('database.db')
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
+    try:
+        buy_now = session.get('buy_now')
 
-    products_list = []  # 🔥 This will store products for orders.products
-
-    # ================= BUY NOW =================
-    buy_now = session.get('buy_now')
-    if buy_now:
-        product_id = buy_now['product_id']
-        quantity = buy_now['quantity']
-
-        cur.execute("SELECT id, product_name, price, stock FROM products WHERE id = ?", (product_id,))
-        product = cur.fetchone()
-        if not product:
-            conn.close()
-            return "Product not found"
-
-        # Add to products_list
-        products_list.append({
-            "product_id": product['id'],
-            "product_name": product['product_name'],
-            "quantity": quantity,
-            "price": product['price']
-        })
-
-        # Update stock
-        new_stock = max(product['stock'] - quantity, 0)
-        cur.execute("UPDATE products SET stock=? WHERE id=?", (new_stock, product_id))
-
-        session.pop('buy_now', None)
-
-    # ================= CART =================
-    else:
+        # ================= CREATE ORDER =================
         cur.execute("""
-            SELECT cart.product_id, cart.quantity, products.product_name, products.price, products.stock
-            FROM cart
-            JOIN products ON cart.product_id = products.id
-            WHERE cart.user_id = ?
-        """, (user_id,))
-        cart_items = cur.fetchall()
+            INSERT INTO orders (customer_id, address, payment_method, status)
+            VALUES (%s, %s, %s, 'Placed')
+        """, (customer_id, json.dumps(address), payment_method))
 
-        for item in cart_items:
-            products_list.append({
-                "product_id": item['product_id'],
-                "product_name": item['product_name'],
-                "quantity": item['quantity'],
-                "price": item['price']
-            })
+        order_id = cur.lastrowid
+        total_amount = 0
 
-            # Update stock
-            new_stock = max(item['stock'] - item['quantity'], 0)
-            cur.execute("UPDATE products SET stock=? WHERE id=?", (new_stock, item['product_id']))
+        # ================= BUY NOW =================
+        if buy_now:
+            cur.execute("""
+                SELECT product_id, price, stock
+                FROM products
+                WHERE product_id = %s
+            """, (buy_now['product_id'],))
 
-        # Clear cart
-        cur.execute("DELETE FROM cart WHERE user_id=?", (user_id,))
+            product = cur.fetchone()
+            if not product:
+                raise Exception("Product not found")
 
-    # 🔥 Convert products_list → JSON string
-    products_json = json.dumps(products_list)
+            if product['stock'] < buy_now['quantity']:
+                raise Exception("Not enough stock")
 
-    # ================= CREATE ORDER =================
-    cur.execute("""
-        INSERT INTO orders (user_id, address, payment_method, status, products)
-        VALUES (?, ?, ?, 'Placed', ?)
-    """, (user_id, address, payment_method, products_json))
-    order_id = cur.lastrowid
+            cur.execute("""
+                INSERT INTO order_items (order_id, product_id, quantity, price)
+                VALUES (%s, %s, %s, %s)
+            """, (
+                order_id,
+                buy_now['product_id'],
+                buy_now['quantity'],
+                product['price']
+            ))
 
-    # ================= INSERT INTO order_items =================
-    for p in products_list:
+            cur.execute("""
+                UPDATE products
+                SET stock = stock - %s
+                WHERE product_id = %s
+            """, (buy_now['quantity'], buy_now['product_id']))
+
+            total_amount += product['price'] * buy_now['quantity']
+            session.pop('buy_now', None)
+
+        # ================= CART =================
+        else:
+            cur.execute("""
+                SELECT c.product_id, c.quantity, p.price, p.stock
+                FROM cart c
+                JOIN products p ON c.product_id = p.product_id
+                WHERE c.customer_id = %s
+            """, (customer_id,))
+
+            cart_items = cur.fetchall()
+            if not cart_items:
+                raise Exception("Cart empty")
+
+            for item in cart_items:
+                if item['stock'] < item['quantity']:
+                    raise Exception("Stock issue")
+
+                cur.execute("""
+                    INSERT INTO order_items (order_id, product_id, quantity, price)
+                    VALUES (%s, %s, %s, %s)
+                """, (
+                    order_id,
+                    item['product_id'],
+                    item['quantity'],
+                    item['price']
+                ))
+
+                cur.execute("""
+                    UPDATE products
+                    SET stock = stock - %s
+                    WHERE product_id = %s
+                """, (item['quantity'], item['product_id']))
+
+                total_amount += item['price'] * item['quantity']
+
+            cur.execute(
+                "DELETE FROM cart WHERE customer_id = %s",
+                (customer_id,)
+            )
+
+        # ================= UPDATE TOTAL =================
         cur.execute("""
-            INSERT INTO order_items (order_id, product_id, quantity, price)
-            VALUES (?, ?, ?, ?)
-        """, (order_id, p['product_id'], p['quantity'], p['price']))
+            UPDATE orders
+            SET total_amount = %s
+            WHERE order_id = %s
+        """, (total_amount, order_id))
 
-    conn.commit()
-    conn.close()
+        mysql.connection.commit()
 
-    # Clear session
-    session.pop('address', None)
-    session.pop('payment_method', None)
+        session.pop('address', None)
+        session.pop('payment_method', None)
 
-    return redirect(url_for('order_success'))
+        return redirect(url_for('order_details', order_id=order_id))
 
+    except Exception as e:
+        mysql.connection.rollback()
+        return str(e)
+
+    finally:
+        cur.close()
 
 @app.route('/order/<int:order_id>')
 def order_details(order_id):
-    user_id = session.get('user_id')
-    if not user_id:
+    customer_id = session.get('customer_id')
+    if not customer_id:
         return redirect(url_for('login'))
 
-    conn = sqlite3.connect('database.db')
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
+    cur = mysql.connection.cursor()
 
+    # 🔹 Fetch order (security: only owner can view)
     cur.execute("""
         SELECT *
         FROM orders
-        WHERE id = ? AND user_id = ?
-    """, (order_id, user_id))
+        WHERE order_id = %s AND customer_id = %s
+    """, (order_id, customer_id))
+
     order = cur.fetchone()
 
     if not order:
-        conn.close()
+        cur.close()
         return "Order not found"
 
+    # 🔹 Decode address JSON
     address = json.loads(order['address'])
 
+    # 🔹 Fetch ordered items
     cur.execute("""
-        SELECT products.product_name,
-        products.image,
-               order_items.quantity,
-               order_items.price
-        FROM order_items
-        JOIN products ON order_items.product_id = products.id
-        WHERE order_items.order_id = ?
+        SELECT
+            p.product_name,
+            p.image,
+            oi.quantity,
+            oi.price
+        FROM order_items oi
+        JOIN products p ON oi.product_id = p.product_id
+        WHERE oi.order_id = %s
     """, (order_id,))
-    items = cur.fetchall()
 
-    # ✅ CALCULATE TOTAL HERE
+    items = cur.fetchall()
+    cur.close()
+
+    # 🔹 Calculate total
     total = sum(item['price'] * item['quantity'] for item in items)
-    conn.close()
+
     return render_template(
         'order_details.html',
         order=order,
         items=items,
         address=address,
-        total=total   # 🔥 PASS TOTAL
+        total=total
     )
 
 @app.route('/cancel_order/<int:order_id>')
 def cancel_order(order_id):
-    user_id = session.get('user_id')
-    if not user_id:
+    customer_id = session.get('customer_id')
+    if not customer_id:
         return redirect(url_for('login'))
-    conn = sqlite3.connect('database.db')
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    # Get order (security + status check)
-    cur.execute("""
-        SELECT * FROM orders
-        WHERE id = ? AND user_id = ?
-    """, (order_id, user_id))
-    order = cur.fetchone()
-    if not order:
-        conn.close()
-        return "Order not found"
-    # ❌ Only Placed orders can be cancelled
-    if order['status'] != 'Placed':
-        conn.close()
-        return "Order cannot be cancelled"
-    # Get ordered items
-    cur.execute("""
-        SELECT product_id, quantity
-        FROM order_items
-        WHERE order_id = ?
-    """, (order_id,))
-    items = cur.fetchall()
-    # Restore stock
-    for item in items:
+
+    cur = mysql.connection.cursor()
+
+    try:
+        # 🔹 Fetch order (security + status check)
         cur.execute("""
-            UPDATE products
-            SET stock = stock + ?
-            WHERE id = ?
-        """, (item['quantity'], item['product_id']))
-    # Update order status
-    cur.execute("""
-        UPDATE orders
-        SET status = 'Cancelled'
-        WHERE id = ?
-    """, (order_id,))
-    conn.commit()
-    conn.close()
-    return redirect(url_for('my_orders'))
-@app.route('/update_order_status', methods=['POST'])
-def update_order_status():
+            SELECT status
+            FROM orders
+            WHERE order_id = %s AND customer_id = %s
+        """, (order_id, customer_id))
 
-    order_id = request.form['order_id']
-    status = request.form['status']
+        order = cur.fetchone()
+        if not order:
+            return "Order not found"
 
-    conn = sqlite3.connect('database.db')
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
+        # ❌ Only 'Placed' orders can be cancelled
+        if order['status'] != 'Placed':
+            return "Order cannot be cancelled"
 
-    # Update order
-    cur.execute("""
-        UPDATE orders
-        SET status = ?
-        WHERE id = ?
-    """, (status, order_id))
+        # 🔹 Fetch ordered items
+        cur.execute("""
+            SELECT product_id, quantity
+            FROM order_items
+            WHERE order_id = %s
+        """, (order_id,))
+        items = cur.fetchall()
 
-    conn.commit()
+        # 🔹 Restore stock
+        for item in items:
+            cur.execute("""
+                UPDATE products
+                SET stock = stock + %s
+                WHERE product_id = %s
+            """, (item['quantity'], item['product_id']))
 
-    # Get user email
-    cur.execute("""
-        SELECT users.email, orders.order_date
-        FROM orders
-        JOIN users ON orders.user_id = users.id
-        WHERE orders.id = ?
-    """, (order_id,))
+        # 🔹 Update order status
+        cur.execute("""
+            UPDATE orders
+            SET status = 'Cancelled'
+            WHERE order_id = %s
+        """, (order_id,))
 
-    order = cur.fetchone()
-    conn.close()
+        mysql.connection.commit()
 
-    print("STATUS:", status)
+        return redirect(url_for('my_orders'))
 
-    # ✅ Send mail when delivered
-    if order and status.lower() == "delivered":
-        print("Sending email...")
-        send_status_email(
-            order["email"],
-            order_id,
-            order["order_date"],
-            status
-        )
+    except Exception as e:
+        mysql.connection.rollback()
+        return str(e)
 
-    return redirect(url_for('admin_orders'))
+    finally:
+        cur.close()
 
 @app.route('/my_orders')
 def my_orders():
-    user_id = session.get('user_id')
-    if not user_id:
+    customer_id = session.get('customer_id')
+    if not customer_id:
         return redirect(url_for('login'))
 
-    conn = sqlite3.connect('database.db')
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
+    cur = mysql.connection.cursor()
 
+    # 🔹 Fetch all orders for the logged-in customer
     cur.execute("""
         SELECT *
         FROM orders
-        WHERE user_id = ?
-        ORDER BY id DESC
-    """, (user_id,))
+        WHERE customer_id = %s
+        ORDER BY order_id DESC
+    """, (customer_id,))
     orders = cur.fetchall()
 
     orders_with_items = []
 
+    # 🔹 Fetch items for each order
     for order in orders:
         cur.execute("""
-            SELECT order_items.quantity,
-                   order_items.price,
-                   products.product_name
-            FROM order_items
-            JOIN products ON order_items.product_id = products.id
-            WHERE order_items.order_id = ?
-        """, (order['id'],))
+            SELECT
+                oi.quantity,
+                oi.price,
+                p.product_name
+            FROM order_items oi
+            JOIN products p ON oi.product_id = p.product_id
+            WHERE oi.order_id = %s
+        """, (order['order_id'],))
 
-        order_items = cur.fetchall()  # 🔥 RENAMED
+        items = cur.fetchall()
 
         orders_with_items.append({
             'order': order,
-            'order_items': order_items   # 🔥 RENAMED
+            'order_items': items
         })
 
-    conn.close()
+    cur.close()
 
-    return render_template('my_orders.html', orders=orders_with_items)
+    return render_template(
+        'my_orders.html',
+        orders=orders_with_items
+    )
 
 @app.route("/invoice/<int:order_id>")
 def download_invoice(order_id):
@@ -1192,6 +1263,51 @@ def download_invoice(order_id):
         download_name=f"Invoice_Order_{order_id}.pdf",
         mimetype="application/pdf"
     )
+
+
+@app.route('/update_order_status', methods=['POST'])
+def update_order_status():
+
+    order_id = request.form['order_id']
+    status = request.form['status']
+
+    conn = sqlite3.connect('database.db')
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    # Update order
+    cur.execute("""
+        UPDATE orders
+        SET status = ?
+        WHERE id = ?
+    """, (status, order_id))
+
+    conn.commit()
+
+    # Get user email
+    cur.execute("""
+        SELECT users.email, orders.order_date
+        FROM orders
+        JOIN users ON orders.user_id = users.id
+        WHERE orders.id = ?
+    """, (order_id,))
+
+    order = cur.fetchone()
+    conn.close()
+
+    print("STATUS:", status)
+
+    # ✅ Send mail when delivered
+    if order and status.lower() == "delivered":
+        print("Sending email...")
+        send_status_email(
+            order["email"],
+            order_id,
+            order["order_date"],
+            status
+        )
+
+    return redirect(url_for('admin_orders'))
 
 @app.route("/admin/login", methods=["GET", "POST"])
 def admin_login():
@@ -1528,17 +1644,6 @@ def delete_product(product_id):
 
     conn.close()
     return redirect(url_for("admin_products"))
-
-
-@app.route("/test_mail")
-def test_mail():
-    send_status_email(
-        "devadharshiniramachandran435@gmail.com",
-        1,
-        "Today",
-        "Delivered"
-    )
-    return "Mail Sent"
 
 
 if __name__ == "__main__":

@@ -66,8 +66,8 @@
             </div>
 
             <!-- Name -->
-            <h4 class="text-center mb-1">{{ user[0] }}</h4>
-            <p class="text-center text-muted mb-3">{{ user[1] }}</p>
+            <h4 class="text-center mb-1">{{ user.customer_name }}</h4>
+            <p class="text-center text-muted mb-3">{{ user.email }}</p>
 
             <!-- Rewards -->
             <div class="reward-box d-flex justify-content-between align-items-center">
@@ -77,7 +77,7 @@
                 </div>
 
                 <span class="coin-pill">
-    {{ user[2] }}
+    {{ user.reward_points}}
 </span>
 
             </div>
@@ -85,7 +85,7 @@
             <!-- Summary -->
             <div class="profile-section text-center">
                 <p class="mb-1 text-muted">Total Orders</p>
-                <h5 class="fw-bold">{{ user[3] }}</h5>
+                <h5 class="fw-bold">{{ user.total_orders }}</h5>
             </div>
 
             <!-- Action -->
