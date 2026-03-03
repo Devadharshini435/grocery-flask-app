@@ -18,6 +18,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import smtplib
 from email.message import EmailMessage
 app = Flask(__name__)
+from staff import staff
+app.register_blueprint(staff)
 app.config['MYSQL_HOST'] = 'localhost'
 app.config['MYSQL_USER'] = 'root'
 app.config['MYSQL_PASSWORD'] = 'Avc@1234'
@@ -559,7 +561,7 @@ def product_detail(pid):
 
             # Check if item already in cart
             cur.execute(
-                "SELECT cart_id, quantity FROM cart WHERE user_id = %s AND product_id = %s",
+                "SELECT cart_id, quantity FROM cart WHERE customer_id = %s AND product_id = %s",
                 (user_id, pid)
             )
             existing = cur.fetchone()
@@ -574,7 +576,7 @@ def product_detail(pid):
             else:
                 # Insert new
                 cur.execute(
-                    "INSERT INTO cart (user_id, product_id, quantity) VALUES (%s, %s, %s)",
+                    "INSERT INTO cart (customer_id, product_id, quantity) VALUES (%s, %s, %s)",
                     (user_id, pid, quantity)
                 )
 
@@ -1148,25 +1150,26 @@ def my_orders():
         'my_orders.html',
         orders=orders_with_items
     )
-
 @app.route("/invoice/<int:order_id>")
 def download_invoice(order_id):
-    conn = get_db()
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
+
+    cur = mysql.connection.cursor()
 
     # ---------- Fetch order ----------
-    cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
+    cur.execute("SELECT * FROM orders WHERE order_id = %s", (order_id,))
     order = cur.fetchone()
 
     if not order:
-        conn.close()
+        cur.close()
         return "Order not found"
+
+    # If you're using DictCursor, order will be dictionary.
+    # Otherwise it's tuple (tell me if you're unsure).
 
     # ---------- Load address JSON safely ----------
     try:
         address = json.loads(order['address']) if order['address'] else {}
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError, KeyError):
         address = {}
 
     # ---------- Fetch order items with product name ----------
@@ -1176,12 +1179,15 @@ def download_invoice(order_id):
             order_items.quantity,
             order_items.price
         FROM order_items
-        JOIN products ON order_items.product_id = products.id
-        WHERE order_items.order_id = ?
+        JOIN products ON order_items.product_id = products.product_id
+        WHERE order_items.order_id = %s
     """, (order_id,))
+    
     items = cur.fetchall()
 
-    conn.close()
+    cur.close()
+
+    # continue your PDF logic here...
 
     # ---------- PDF Setup ----------
     buffer = io.BytesIO()
@@ -1196,7 +1202,7 @@ def download_invoice(order_id):
 
     # ---------- Order Info ----------
     pdf.setFont("Helvetica", 11)
-    pdf.drawString(50, y, f"Order ID: {order['id']}")
+    pdf.drawString(50, y, f"Order ID: {order['order_id']}")
     y -= 18
     pdf.drawString(50, y, f"Payment Method: {order['payment_method']}")
     y -= 18
@@ -1309,29 +1315,51 @@ def update_order_status():
 
     return redirect(url_for('admin_orders'))
 
-@app.route("/admin/login", methods=["GET", "POST"])
-def admin_login():
+@app.route("/staff/login", methods=["GET", "POST"])
+def staff_login():
+
     if request.method == "POST":
         email = request.form["email"]
         password = request.form["password"]
 
-        conn = get_db()
-        cur = conn.cursor()
+        cur = mysql.connection.cursor()
         cur.execute(
-            "SELECT id, role FROM users WHERE email=? AND password=?",
+            "SELECT * FROM staff WHERE email = %s AND password = %s AND status='active'",
             (email, password)
         )
-        admin = cur.fetchone()
-        conn.close()
+        staff = cur.fetchone()
+        cur.close()
 
-        if admin and admin[1] == "admin":
-            session["admin_id"] = admin[0]
-            session["admin_logged_in"] = True   # ✅ ADD THIS LINE
-            return redirect("/admin/dashboard")
+        if staff:
+            session["staff_id"] = staff[0]      # id
+            session["staff_logged_in"] = True
+            return redirect("/staff/dashboard")
         else:
-            return "Invalid admin credentials"
+            return "Invalid staff credentials"
 
-    return render_template("admin_login.html")
+    return render_template("staff/login.html")
+
+@app.route("/staff/register", methods=["GET", "POST"])
+def staff_register():
+
+    if request.method == "POST":
+        name = request.form["name"]
+        email = request.form["email"]
+        phone = request.form["phone"]
+        password = request.form["password"]   # plain password
+
+        cur = mysql.connection.cursor()
+        cur.execute("""
+            INSERT INTO staff (name, email, phone, password)
+            VALUES (%s, %s, %s, %s)
+        """, (name, email, phone, password))
+
+        mysql.connection.commit()
+        cur.close()
+
+        return redirect("/staff/login")
+
+    return render_template("staff/register.html")
 
 
 @app.route("/admin/dashboard")

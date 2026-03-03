@@ -41,7 +41,7 @@
 {{ order.status }}
 </span>
 
-<a href="{{ url_for('download_invoice', order_id=order.id) }}"
+<a href="{{ url_for('download_invoice', order_id=order.order_id) }}"
 class="btn btn-outline-dark btn-sm ms-2">
 Download Invoice
 </a>

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Staff Login</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+```
+<!-- Google Font -->
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+
+<style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: 'Poppins', sans-serif;
+    }
+
+    body {
+        height: 100vh;
+        background: url("{{ url_for('static', filename='images/bg2.jpg') }}") no-repeat center center/cover;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        position: relative;
+    }
+
+    /* Blur + dark overlay */
+    body::before {
+        content: "";
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        backdrop-filter: blur(10px);
+        background: rgba(0, 0, 0, 0.5);
+    }
+
+    .login-card {
+        position: relative;
+        width: 380px;
+        padding: 40px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.12);
+        box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+        backdrop-filter: blur(15px);
+        color: white;
+        text-align: center;
+    }
+
+    .login-card h2 {
+        margin-bottom: 30px;
+        font-weight: 600;
+        letter-spacing: 1px;
+    }
+
+    .input-group {
+        margin-bottom: 20px;
+        text-align: left;
+    }
+
+    .input-group label {
+        font-size: 14px;
+    }
+
+    .input-group input {
+        width: 100%;
+        padding: 12px;
+        margin-top: 5px;
+        border: none;
+        border-radius: 8px;
+        outline: none;
+    }
+
+    .btn {
+        width: 100%;
+        padding: 12px;
+        border: none;
+        border-radius: 8px;
+        background: linear-gradient(45deg, #00c6ff, #0072ff);
+        color: white;
+        font-size: 16px;
+        cursor: pointer;
+        transition: 0.3s ease;
+    }
+
+    .btn:hover {
+        transform: scale(1.05);
+    }
+    .register-link {
+    margin-top: 20px;
+    font-size: 14px;
+}
+
+.register-link a {
+    color: #ffb347;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.register-link a:hover {
+    text-decoration: underline;
+}
+</style>
+
+
+</head>
+<body>
+
+<div class="login-card">
+    <h2>Staff Login</h2>
+
+<form method="POST">
+    <div class="input-group">
+        <label>Email</label>
+        <input type="email" name="email" required>
+    </div>
+
+    <div class="input-group">
+        <label>Password</label>
+        <input type="password" name="password" required>
+    </div>
+
+    <button type="submit" class="btn">Login</button>
+</form>
+
+<div class="register-link">
+    Not registered?
+    <a href="{{ url_for('staff.staff_register') }}">Create Account</a>
+</div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Staff Register</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+
+<!-- Google Font -->
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+
+<style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: 'Poppins', sans-serif;
+    }
+
+    body {
+        height: 100vh;
+        background: url("{{ url_for('static', filename='images/PG.jpg') }}") no-repeat center center/cover;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        position: relative;
+    }
+
+    /* Blur + Dark Overlay */
+    body::before {
+        content: "";
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        backdrop-filter: blur(10px);
+        background: rgba(0, 0, 0, 0.5);
+    }
+
+    .register-card {
+        position: relative;
+        width: 420px;
+        padding: 40px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.12);
+        box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+        backdrop-filter: blur(15px);
+        color: white;
+        text-align: center;
+    }
+
+    .register-card h2 {
+        margin-bottom: 25px;
+        font-weight: 600;
+    }
+
+    .input-group {
+        margin-bottom: 15px;
+        text-align: left;
+    }
+
+    .input-group input {
+        width: 100%;
+        padding: 12px;
+        margin-top: 5px;
+        border-radius: 8px;
+        border: none;
+        outline: none;
+    }
+
+    .btn {
+        width: 100%;
+        padding: 12px;
+        border-radius: 8px;
+        border: none;
+        margin-top: 10px;
+        background: linear-gradient(45deg, #ff512f, #dd2476);
+        color: white;
+        font-size: 15px;
+        cursor: pointer;
+        transition: 0.3s ease;
+    }
+
+    .btn:hover {
+        transform: scale(1.05);
+    }
+
+    .login-link {
+        margin-top: 15px;
+        font-size: 14px;
+    }
+
+    .login-link a {
+        color: #ffb347;
+        text-decoration: none;
+    }
+    .input-group select {
+    width: 100%;
+    padding: 12px;
+    margin-top: 5px;
+    border-radius: 8px;
+    border: none;
+    outline: none;
+    background: rgba(255, 255, 255, 0.9);
+    color: #333;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+/* Optional hover effect */
+.input-group select:hover {
+    background: rgba(255, 255, 255, 1);
+}
+</style>
+
+
+</head>
+<body>
+
+<div class="register-card">
+    <h2>Create Staff Account</h2>
+<form method="POST">
+    <div class="input-group">
+        <input type="text" name="name" placeholder="Full Name" required>
+    </div>
+
+    <div class="input-group">
+        <input type="email" name="email" placeholder="Email" required>
+    </div>
+
+    <div class="input-group">
+        <input type="text" name="phone" placeholder="Phone">
+    </div>
+
+    <div class="input-group">
+    <select name="designation" required>
+        <option value="">Select Designation</option>
+        <option value="Manager">Manager</option>
+        <option value="Sales">Sales Staff</option>
+        <option value="Inventory">Inventory Staff</option>
+        <option value="Accounts">Accounts</option>
+    </select>
+</div>
+
+    <div class="input-group">
+        <input type="password" name="password" placeholder="Password" required>
+    </div>
+
+    <button type="submit" class="btn">Register</button>
+</form>
+
+<div class="login-link">
+    Already have an account?
+    <a href="{{ url_for('staff.staff_login') }}">Login</a>
+</div>
+
+</div>
+
+</body>
+</html>

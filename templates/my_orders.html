@@ -22,8 +22,8 @@
                 
                 <!-- LEFT -->
                 <div>
-                    <a href="{{ url_for('order_details', order_id=data.order.id) }}">
-                        <strong>Order ID:</strong> {{ data.order.id }}
+                    <a href="{{ url_for('order_details', order_id=data.order.order_id) }}">
+                        <strong>Order ID:</strong> {{ data.order.order_id }}
                     </a>
                     <br>
                     <small class="text-muted">
@@ -48,7 +48,7 @@
 
                     <!-- CANCEL BUTTON -->
                     {% if data.order.status == 'Placed' %}
-                        <a href="{{ url_for('cancel_order', order_id=data.order.id) }}"
+                        <a href="{{ url_for('cancel_order', order_id=data.order.order_id) }}"
                            class="btn btn-sm btn-danger mt-1"
                            onclick="return confirm('Are you sure you want to cancel this order?');">
                             Cancel Order
