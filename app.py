@@ -17,16 +17,19 @@ import io
 from werkzeug.security import generate_password_hash, check_password_hash
 import smtplib
 from email.message import EmailMessage
+from extensions import mysql
 app = Flask(__name__)
-from staff import staff
-app.register_blueprint(staff)
+
 app.config['MYSQL_HOST'] = 'localhost'
 app.config['MYSQL_USER'] = 'root'
 app.config['MYSQL_PASSWORD'] = 'Avc@1234'
 app.config['MYSQL_DB'] = 'grocery_db'
 app.config['MYSQL_CURSORCLASS'] = 'DictCursor'
 
-mysql = MySQL(app)
+mysql.init_app(app)
+
+from staff import staff
+app.register_blueprint(staff)
 EMAIL_ADDRESS = "devadharshiniramachandran435@gmail.com"
 EMAIL_PASSWORD = "vadk tqhr arsr ltfi"
 app.secret_key = "12345"  # Session secret key
