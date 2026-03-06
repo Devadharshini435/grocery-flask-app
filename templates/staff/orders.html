@@ -48,7 +48,7 @@ padding:30px;
 
 <a href="{{ url_for('staff.dashboard') }}">Dashboard</a>
 <a href="{{ url_for('staff.orders') }}">Orders</a>
-<a href="#">Products</a>
+<a href="{{ url_for('staff.products') }}">Products</a>
 <a href="#">Suppliers</a>
 <a href="#">Users</a>
 <a href="#">Logout</a>
@@ -91,20 +91,48 @@ Product Wise
 <tr>
 <th>Order ID</th>
 <th>Customer</th>
+<th>Address</th>
 <th>Total</th>
 <th>Status</th>
+<th>Update</th>
 </tr>
 </thead>
-
 <tbody>
 
 {% for order in orders %}
 
 <tr>
+
 <td>{{ order.order_id }}</td>
-<td>{{ order.customer_id }}</td>
+<td>{{ order.customer_name }}</td>
+<td>{{ order.address }}</td>
 <td>{{ order.total_amount }}</td>
+
 <td>{{ order.status }}</td>
+
+<td>
+
+<form method="POST" action="{{ url_for('staff.update_order_status') }}">
+
+<input type="hidden" name="order_id" value="{{ order.order_id }}">
+
+<select name="status" class="form-select form-select-sm">
+
+<option value="Pending">Pending</option>
+<option value="Shipped">Shipped</option>
+<option value="Delivered">Delivered</option>
+<option value="Cancelled">Cancelled</option>
+
+</select>
+
+<button class="btn btn-sm btn-primary mt-1">
+Update
+</button>
+
+</form>
+
+</td>
+
 </tr>
 
 {% endfor %}
@@ -128,6 +156,7 @@ Product Wise
 <th>Product</th>
 <th>Quantity</th>
 <th>Price</th>
+<th>Status</th>
 </tr>
 </thead>
 
@@ -141,6 +170,7 @@ Product Wise
 <td>{{ item.product_name }}</td>
 <td>{{ item.quantity }}</td>
 <td>{{ item.price }}</td>
+<td>{{ item.status }}</td>
 
 </tr>
 
