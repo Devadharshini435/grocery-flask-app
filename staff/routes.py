@@ -159,35 +159,84 @@ def update_order_status():
 def products():
 
     cur = mysql.connection.cursor()
-
     cur.execute("SELECT * FROM products")
 
     products = cur.fetchall()
 
-    cur.close()
+    return render_template("staff_products.html", products=products)
+@staff.route("/staff/edit_product/<int:id>", methods=["GET","POST"])
+def edit_product(id):
 
-    return render_template("staff/products.html", products=products)
+    cur = mysql.connection.cursor()
+
+    if request.method == "POST":
+
+        category = request.form["category"]
+        product_name = request.form["product_name"]
+        dish_name = request.form["dish_name"]
+        description = request.form["description"]
+        price = request.form["price"]
+        stock = request.form["stock"]
+
+        image = request.files["image"]
+
+        if image.filename != "":
+            filename = secure_filename(image.filename)
+            image.save(os.path.join("static/uploads", filename))
+
+            cur.execute("""
+            UPDATE products
+            SET category=%s, product_name=%s, dish_name=%s,
+            description=%s, price=%s, stock=%s, image=%s
+            WHERE product_id=%s
+            """,(category,product_name,dish_name,description,price,stock,filename,id))
+
+        else:
+
+            cur.execute("""
+            UPDATE products
+            SET category=%s, product_name=%s, dish_name=%s,
+            description=%s, price=%s, stock=%s
+            WHERE product_id=%s
+            """,(category,product_name,dish_name,description,price,stock,id))
+
+        mysql.connection.commit()
+
+        return redirect(url_for("staff.products"))
+
+    cur.execute("SELECT * FROM products WHERE product_id=%s",(id,))
+    product = cur.fetchone()
+
+    return render_template("staff/staff_edit_product.html",product=product)
+import os
+from werkzeug.utils import secure_filename
+
+UPLOAD_FOLDER = "static/uploads"
 
 @staff.route("/staff/add_product", methods=["GET","POST"])
 def add_product():
 
     if request.method == "POST":
 
-        name = request.form["product_name"]
+        category = request.form["category"]
+        product_name = request.form["product_name"]
+        dish_name = request.form["dish_name"]
+        description = request.form["description"]
         price = request.form["price"]
         stock = request.form["stock"]
 
         image = request.files["image"]
-        filename = secure_filename(image.filename)
 
-        image.save("static/uploads/" + filename)
+        filename = secure_filename(image.filename)
+        image.save(os.path.join(UPLOAD_FOLDER, filename))
 
         cur = mysql.connection.cursor()
 
         cur.execute("""
-        INSERT INTO products (product_name, price, stock, image)
-        VALUES (%s,%s,%s,%s)
-        """,(name,price,stock,filename))
+        INSERT INTO products
+        (category, product_name, dish_name, description, price, stock, image)
+        VALUES (%s,%s,%s,%s,%s,%s,%s)
+        """,(category, product_name, dish_name, description, price, stock, filename))
 
         mysql.connection.commit()
         cur.close()
@@ -195,3 +244,14 @@ def add_product():
         return redirect(url_for("staff.products"))
 
     return render_template("staff/add_product.html")
+
+@staff.route("/staff/delete_product/<int:id>")
+def delete_product(id):
+
+    cur = mysql.connection.cursor()
+
+    cur.execute("DELETE FROM products WHERE product_id=%s",(id,))
+
+    mysql.connection.commit()
+
+    return redirect(url_for("staff.products"))
