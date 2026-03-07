@@ -255,3 +255,76 @@ def delete_product(id):
     mysql.connection.commit()
 
     return redirect(url_for("staff.products"))
+
+@staff.route("/suppliers")
+def suppliers():
+
+    cursor = mysql.connection.cursor()
+    cursor.execute("""
+        SELECT suppliers.supplier_id, suppliers.supplier_name,
+               products.product_name, suppliers.phone,
+               suppliers.email, suppliers.address
+        FROM suppliers
+        LEFT JOIN products ON suppliers.product_id = products.product_id
+    """)
+
+    suppliers = cursor.fetchall()
+
+    return render_template("staff/suppliers.html", suppliers=suppliers)
+
+@staff.route("/add_supplier", methods=["GET","POST"])
+def add_supplier():
+
+    cursor = mysql.connection.cursor()
+
+    cursor.execute("SELECT product_id, product_name FROM products")
+    products = cursor.fetchall()
+
+    if request.method == "POST":
+
+        name = request.form["supplier_name"]
+        product_id = request.form["product_id"]
+        phone = request.form["phone"]
+        email = request.form["email"]
+        address = request.form["address"]
+
+        cursor.execute("""
+            INSERT INTO suppliers
+            (supplier_name, product_id, phone, email, address)
+            VALUES (%s,%s,%s,%s,%s)
+        """,(name, product_id, phone, email, address))
+
+        mysql.connection.commit()
+
+        return redirect(url_for("staff.suppliers"))
+
+    return render_template("add_supplier.html", products=products)
+
+@staff.route("/customers")
+def customers():
+
+    cursor = mysql.connection.cursor()
+
+    cursor.execute("""
+    SELECT 
+        customer.customer_id,
+        customer.customer_name,
+        customer.customer_email,
+        customer.reward_points,
+        COUNT(orders.order_id) AS total_orders
+    FROM customer
+    LEFT JOIN orders 
+        ON customer.customer_id = orders.customer_id
+    GROUP BY customer.customer_id
+    """)
+
+    customer = cursor.fetchall()
+
+    return render_template("staff_customers.html", customer=customer)
+
+@staff.route("/logout")
+def logout():
+
+    session.clear()
+
+    return redirect(url_for("staff.staff_login"))
