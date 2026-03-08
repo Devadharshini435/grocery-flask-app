@@ -49,8 +49,8 @@ padding:30px;
 <a href="{{ url_for('staff.dashboard') }}">Dashboard</a>
 <a href="{{ url_for('staff.orders') }}">Orders</a>
 <a href="{{ url_for('staff.products') }}">Products</a>
-<a href="#">Suppliers</a>
-<a href="#">Users</a>
+<a href="{{ url_for('staff.suppliers') }}">Suppliers</a>
+<a href="{{ url_for('staff.customers') }}">Customers</a>
 <a href="#">Logout</a>
 
 </div>
@@ -103,7 +103,7 @@ Product Wise
 
 <tr>
 
-<td>{{ order.order_id }}</td>
+<td>{{ order.id }}</td>
 <td>{{ order.customer_name }}</td>
 <td>{{ order.address }}</td>
 <td>{{ order.total_amount }}</td>
@@ -114,7 +114,7 @@ Product Wise
 
 <form method="POST" action="{{ url_for('staff.update_order_status') }}">
 
-<input type="hidden" name="order_id" value="{{ order.order_id }}">
+<input type="hidden" name="order_id" value="{{ order.id }}">
 
 <select name="status" class="form-select form-select-sm">
 

@@ -480,6 +480,11 @@ def products():
         categories=categories,
         all_categories=all_categories
     )
+
+@app.route('/payment')
+def payment():
+    return render_template('payment.html')
+
 @app.route('/orders')
 def orders():
     return render_template('orders.html')
@@ -647,7 +652,7 @@ def cart_checkout():
             c.quantity
         FROM cart c
         JOIN products p ON c.product_id = p.product_id
-        WHERE c.user_id = %s
+        WHERE c.customer_id = %s
     """, (user_id,))
 
     cart_items = cur.fetchall()
@@ -879,35 +884,21 @@ def remove_cart(cart_id):
     cur.close()
 
     return redirect(url_for('cart'))
-
 @app.route('/place_order')
 def place_order():
     customer_id = session.get('customer_id')
     if not customer_id:
         return redirect(url_for('login'))
 
-    address = session.get('address')
-    payment_method = session.get('payment_method', 'COD')
-
-    if not address:
-        return redirect(url_for('address'))
-
     cur = mysql.connection.cursor()
 
     try:
         buy_now = session.get('buy_now')
-
-        # ================= CREATE ORDER =================
-        cur.execute("""
-            INSERT INTO orders (customer_id, address, payment_method, status)
-            VALUES (%s, %s, %s, 'Placed')
-        """, (customer_id, json.dumps(address), payment_method))
-
-        order_id = cur.lastrowid
         total_amount = 0
 
         # ================= BUY NOW =================
         if buy_now:
+
             cur.execute("""
                 SELECT product_id, price, stock
                 FROM products
@@ -915,84 +906,90 @@ def place_order():
             """, (buy_now['product_id'],))
 
             product = cur.fetchone()
+
             if not product:
                 raise Exception("Product not found")
 
             if product['stock'] < buy_now['quantity']:
                 raise Exception("Not enough stock")
 
+            total_amount = product['price'] * buy_now['quantity']
+
             cur.execute("""
-                INSERT INTO order_items (order_id, product_id, quantity, price)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO orders
+                (customer_id, product_id, quantity, price, total_amount, status)
+                VALUES (%s,%s,%s,%s,%s,'Placed')
             """, (
-                order_id,
+                customer_id,
                 buy_now['product_id'],
                 buy_now['quantity'],
-                product['price']
+                product['price'],
+                total_amount
             ))
 
             cur.execute("""
                 UPDATE products
                 SET stock = stock - %s
                 WHERE product_id = %s
-            """, (buy_now['quantity'], buy_now['product_id']))
+            """, (
+                buy_now['quantity'],
+                buy_now['product_id']
+            ))
 
-            total_amount += product['price'] * buy_now['quantity']
             session.pop('buy_now', None)
 
         # ================= CART =================
         else:
+
             cur.execute("""
                 SELECT c.product_id, c.quantity, p.price, p.stock
                 FROM cart c
-                JOIN products p ON c.product_id = p.product_id
+                JOIN products p
+                ON c.product_id = p.product_id
                 WHERE c.customer_id = %s
             """, (customer_id,))
 
             cart_items = cur.fetchall()
+
             if not cart_items:
                 raise Exception("Cart empty")
 
             for item in cart_items:
+
                 if item['stock'] < item['quantity']:
                     raise Exception("Stock issue")
 
+                total = item['price'] * item['quantity']
+
                 cur.execute("""
-                    INSERT INTO order_items (order_id, product_id, quantity, price)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO orders
+                    (customer_id, product_id, quantity, price, total_amount, status)
+                    VALUES (%s,%s,%s,%s,%s,'Placed')
                 """, (
-                    order_id,
+                    customer_id,
                     item['product_id'],
                     item['quantity'],
-                    item['price']
+                    item['price'],
+                    total
                 ))
 
                 cur.execute("""
                     UPDATE products
                     SET stock = stock - %s
                     WHERE product_id = %s
-                """, (item['quantity'], item['product_id']))
-
-                total_amount += item['price'] * item['quantity']
+                """, (
+                    item['quantity'],
+                    item['product_id']
+                ))
 
             cur.execute(
-                "DELETE FROM cart WHERE customer_id = %s",
+                "DELETE FROM cart WHERE customer_id=%s",
                 (customer_id,)
             )
 
-        # ================= UPDATE TOTAL =================
-        cur.execute("""
-            UPDATE orders
-            SET total_amount = %s
-            WHERE order_id = %s
-        """, (total_amount, order_id))
-
         mysql.connection.commit()
 
-        session.pop('address', None)
-        session.pop('payment_method', None)
-
-        return redirect(url_for('order_details', order_id=order_id))
+        return redirect(url_for('orders'))
 
     except Exception as e:
         mysql.connection.rollback()
@@ -1000,20 +997,20 @@ def place_order():
 
     finally:
         cur.close()
-
 @app.route('/order/<int:order_id>')
 def order_details(order_id):
+
     customer_id = session.get('customer_id')
     if not customer_id:
         return redirect(url_for('login'))
 
     cur = mysql.connection.cursor()
 
-    # 🔹 Fetch order (security: only owner can view)
+    # 🔹 fetch order row
     cur.execute("""
         SELECT *
         FROM orders
-        WHERE order_id = %s AND customer_id = %s
+        WHERE id = %s AND customer_id = %s
     """, (order_id, customer_id))
 
     order = cur.fetchone()
@@ -1022,37 +1019,46 @@ def order_details(order_id):
         cur.close()
         return "Order not found"
 
-    # 🔹 Decode address JSON
-    address = json.loads(order['address'])
 
-    # 🔹 Fetch ordered items
+    # 🔹 get customer address from customer table
+    cur.execute("""
+        SELECT address, city, pincode
+        FROM customer
+        WHERE customer_id = %s
+    """, (customer_id,))
+
+    address = cur.fetchone()
+
+
+    # 🔹 get product info
     cur.execute("""
         SELECT
+            o.quantity,
+            o.price,
             p.product_name,
-            p.image,
-            oi.quantity,
-            oi.price
-        FROM order_items oi
-        JOIN products p ON oi.product_id = p.product_id
-        WHERE oi.order_id = %s
+            p.image
+        FROM orders o
+        JOIN products p
+        ON o.product_id = p.product_id
+        WHERE o.id = %s
     """, (order_id,))
 
     items = cur.fetchall()
+
     cur.close()
 
-    # 🔹 Calculate total
-    total = sum(item['price'] * item['quantity'] for item in items)
+    total = order["total_amount"]
 
     return render_template(
-        'order_details.html',
+        "order_details.html",
         order=order,
         items=items,
         address=address,
         total=total
     )
-
 @app.route('/cancel_order/<int:order_id>')
 def cancel_order(order_id):
+
     customer_id = session.get('customer_id')
     if not customer_id:
         return redirect(url_for('login'))
@@ -1060,43 +1066,42 @@ def cancel_order(order_id):
     cur = mysql.connection.cursor()
 
     try:
-        # 🔹 Fetch order (security + status check)
+
+        # 🔹 Fetch order
         cur.execute("""
-            SELECT status
+            SELECT product_id, quantity, status
             FROM orders
-            WHERE order_id = %s AND customer_id = %s
+            WHERE id = %s AND customer_id = %s
         """, (order_id, customer_id))
 
         order = cur.fetchone()
+
         if not order:
             return "Order not found"
 
-        # ❌ Only 'Placed' orders can be cancelled
+        # ❌ only placed can cancel
         if order['status'] != 'Placed':
             return "Order cannot be cancelled"
 
-        # 🔹 Fetch ordered items
+
+        # 🔹 restore stock
         cur.execute("""
-            SELECT product_id, quantity
-            FROM order_items
-            WHERE order_id = %s
-        """, (order_id,))
-        items = cur.fetchall()
+            UPDATE products
+            SET stock = stock + %s
+            WHERE product_id = %s
+        """, (
+            order['quantity'],
+            order['product_id']
+        ))
 
-        # 🔹 Restore stock
-        for item in items:
-            cur.execute("""
-                UPDATE products
-                SET stock = stock + %s
-                WHERE product_id = %s
-            """, (item['quantity'], item['product_id']))
 
-        # 🔹 Update order status
+        # 🔹 update status
         cur.execute("""
             UPDATE orders
             SET status = 'Cancelled'
-            WHERE order_id = %s
+            WHERE id = %s
         """, (order_id,))
+
 
         mysql.connection.commit()
 
@@ -1108,171 +1113,174 @@ def cancel_order(order_id):
 
     finally:
         cur.close()
-
+        
 @app.route('/my_orders')
 def my_orders():
+
     customer_id = session.get('customer_id')
     if not customer_id:
         return redirect(url_for('login'))
 
     cur = mysql.connection.cursor()
 
-    # 🔹 Fetch all orders for the logged-in customer
     cur.execute("""
-        SELECT *
-        FROM orders
-        WHERE customer_id = %s
-        ORDER BY order_id DESC
+        SELECT
+            o.id,
+            o.quantity,
+            o.price,
+            o.total_amount,
+            o.status,
+            o.order_date,
+            p.product_name,
+            p.image
+        FROM orders o
+        JOIN products p
+        ON o.product_id = p.product_id
+        WHERE o.customer_id = %s
+        ORDER BY o.id DESC
     """, (customer_id,))
+
     orders = cur.fetchall()
-
-    orders_with_items = []
-
-    # 🔹 Fetch items for each order
-    for order in orders:
-        cur.execute("""
-            SELECT
-                oi.quantity,
-                oi.price,
-                p.product_name
-            FROM order_items oi
-            JOIN products p ON oi.product_id = p.product_id
-            WHERE oi.order_id = %s
-        """, (order['order_id'],))
-
-        items = cur.fetchall()
-
-        orders_with_items.append({
-            'order': order,
-            'order_items': items
-        })
 
     cur.close()
 
     return render_template(
-        'my_orders.html',
-        orders=orders_with_items
+        "my_orders.html",
+        orders=orders
     )
+
 @app.route("/invoice/<int:order_id>")
 def download_invoice(order_id):
 
     cur = mysql.connection.cursor()
 
     # ---------- Fetch order ----------
-    cur.execute("SELECT * FROM orders WHERE order_id = %s", (order_id,))
+    cur.execute("""
+        SELECT *
+        FROM orders
+        WHERE id = %s
+    """, (order_id,))
     order = cur.fetchone()
 
     if not order:
         cur.close()
         return "Order not found"
 
-    # If you're using DictCursor, order will be dictionary.
-    # Otherwise it's tuple (tell me if you're unsure).
 
-    # ---------- Load address JSON safely ----------
-    try:
-        address = json.loads(order['address']) if order['address'] else {}
-    except (json.JSONDecodeError, TypeError, KeyError):
-        address = {}
-
-    # ---------- Fetch order items with product name ----------
+    # ---------- Fetch customer address ----------
     cur.execute("""
-        SELECT 
-            products.product_name AS product_name,
-            order_items.quantity,
-            order_items.price
-        FROM order_items
-        JOIN products ON order_items.product_id = products.product_id
-        WHERE order_items.order_id = %s
+        SELECT customer_name, phone, address, city, pincode
+        FROM customer
+        WHERE customer_id = %s
+    """, (order["customer_id"],))
+
+    address = cur.fetchone()
+
+
+    # ---------- Fetch product ----------
+    cur.execute("""
+        SELECT
+            p.product_name,
+            o.quantity,
+            o.price
+        FROM orders o
+        JOIN products p
+        ON o.product_id = p.product_id
+        WHERE o.id = %s
     """, (order_id,))
-    
+
     items = cur.fetchall()
 
     cur.close()
 
-    # continue your PDF logic here...
 
-    # ---------- PDF Setup ----------
+    # ---------- PDF ----------
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4)
+
     width, height = A4
     y = height - 50
 
-    # ---------- Title ----------
+
     pdf.setFont("Helvetica-Bold", 18)
-    pdf.drawCentredString(width / 2, y, "INVOICE")
+    pdf.drawCentredString(width/2, y, "INVOICE")
     y -= 40
 
-    # ---------- Order Info ----------
+
     pdf.setFont("Helvetica", 11)
-    pdf.drawString(50, y, f"Order ID: {order['order_id']}")
+    pdf.drawString(50, y, f"Order ID: {order['id']}")
     y -= 18
-    pdf.drawString(50, y, f"Payment Method: {order['payment_method']}")
-    y -= 18
-    pdf.drawString(50, y, f"Order Status: {order['status']}")
+    pdf.drawString(50, y, f"Status: {order['status']}")
     y -= 25
-    # ---------- Delivery Address ----------
+
+
+    # ---------- Address ----------
     pdf.setFont("Helvetica-Bold", 11)
     pdf.drawString(50, y, "Delivery Address:")
     y -= 15
+
     pdf.setFont("Helvetica", 11)
+
     address_lines = [
-        f"Name: {address.get('name', '')}",
-        f"Phone: {address.get('phone', '')}",
-        f"Address: {address.get('address', '')}",
-        f"City: {address.get('city', '')}",
-        f"Pincode: {address.get('pincode', '')}"
+        f"Name: {address['customer_name']}",
+        f"Phone: {address['phone']}",
+        f"Address: {address['address']}",
+        f"City: {address['city']}",
+        f"Pincode: {address['pincode']}",
     ]
 
     for line in address_lines:
-        if y < 80:   # page break safety
-            pdf.showPage()
-            pdf.setFont("Helvetica", 11)
-            y = height - 50
         pdf.drawString(50, y, line)
         y -= 15
+
+
     y -= 10
-    # ---------- Table Header ----------
+
+    # ---------- Header ----------
     pdf.setFont("Helvetica-Bold", 11)
+
     pdf.drawString(50, y, "Product")
     pdf.drawString(300, y, "Qty")
     pdf.drawString(350, y, "Price")
     pdf.drawString(430, y, "Total")
+
     y -= 15
+
     pdf.setFont("Helvetica", 11)
-    total_amount = 0    # ---------- Items ----------
+
+    total_amount = 0
+
     for item in items:
-        item_total = item['price'] * item['quantity']
+
+        item_total = item["price"] * item["quantity"]
         total_amount += item_total
 
-        if y < 80:
-            pdf.showPage()
-            pdf.setFont("Helvetica", 11)
-            y = height - 50
+        pdf.drawString(50, y, item["product_name"])
+        pdf.drawString(300, y, str(item["quantity"]))
+        pdf.drawString(350, y, str(item["price"]))
+        pdf.drawString(430, y, str(item_total))
 
-        pdf.drawString(50, y, item['product_name'])
-        pdf.drawString(300, y, str(item['quantity']))
-        pdf.drawString(350, y, f"Rs. {item['price']}")
-        pdf.drawString(430, y, f"Rs. {item_total}")
         y -= 18
 
-    # ---------- Grand Total ----------
+
     y -= 15
+
     pdf.setFont("Helvetica-Bold", 12)
     pdf.drawString(350, y, "Grand Total:")
-    pdf.drawString(430, y, f"Rs. {total_amount}")
+    pdf.drawString(430, y, str(total_amount))
 
-    # ---------- Save PDF ----------
+
     pdf.showPage()
     pdf.save()
+
     buffer.seek(0)
+
     return send_file(
         buffer,
         as_attachment=True,
-        download_name=f"Invoice_Order_{order_id}.pdf",
+        download_name=f"Invoice_{order_id}.pdf",
         mimetype="application/pdf"
     )
-
 
 @app.route('/update_order_status', methods=['POST'])
 def update_order_status():

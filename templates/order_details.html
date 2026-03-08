@@ -2,10 +2,14 @@
 <html>
 <head>
     <title>Order Details</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+          rel="stylesheet">
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+
 <style>
-    
 .status-step{
     font-size:14px;
     font-weight:600;
@@ -14,13 +18,14 @@
 
 </head>
 
-
 <body class="bg-light">
-    {% include 'navbar.html' %}
+
+{% include 'navbar.html' %}
 
 <div class="container mt-5">
 
 <h3 class="mb-4">🧾 Order Details</h3>
+
 
 <!-- ORDER SUMMARY -->
 <div class="card shadow-sm mb-4">
@@ -28,10 +33,10 @@
 
 <div>
 <h5>Order #{{ order.id }}</h5>
-<p class="mb-1">Payment: {{ order.payment_method }}</p>
 </div>
 
 <div>
+
 <span class="badge
 {% if order.status=='Placed' %}bg-warning
 {% elif order.status=='Packed' %}bg-info
@@ -41,14 +46,17 @@
 {{ order.status }}
 </span>
 
-<a href="{{ url_for('download_invoice', order_id=order.order_id) }}"
+
+<a href="{{ url_for('download_invoice', order_id=order.id) }}"
 class="btn btn-outline-dark btn-sm ms-2">
 Download Invoice
 </a>
+
 </div>
 
 </div>
 </div>
+
 
 
 <!-- ORDER TRACKER -->
@@ -79,25 +87,34 @@ Download Invoice
 </div>
 
 
-<!-- DELIVERY ADDRESS -->
+
+<!-- ADDRESS -->
 <div class="card shadow-sm mb-4">
 <div class="card-header">📍 Delivery Address</div>
 
 <div class="card-body">
-<p class="fw-bold">{{ address.name }}</p>
-<p class="mb-1">{{ address.street }}</p>
-<p class="mb-1">{{ address.city }} - {{ address.pincode }}</p>
+
+<p class="fw-bold">{{ address.customer_name }}</p>
+
+<p>{{ address.address }}</p>
+
+<p>{{ address.city }} - {{ address.pincode }}</p>
+
 <p>📞 {{ address.phone }}</p>
-</div>
 
 </div>
-<!-- ORDER ITEMS -->
+</div>
+
+
+
+<!-- ITEMS -->
 <div class="card shadow-sm">
 <div class="card-header">🛒 Ordered Items</div>
 
 <div class="card-body">
 
 {% for item in items %}
+
 {% set item_total = item.price * item.quantity %}
 
 <div class="row align-items-center border-bottom py-3">
@@ -109,7 +126,7 @@ class="img-fluid rounded">
 
 <div class="col-md-6">
 <h6>{{ item.product_name }}</h6>
-<small class="text-muted">Qty: {{ item.quantity }}</small>
+<small>Qty: {{ item.quantity }}</small>
 </div>
 
 <div class="col-md-4 text-end">
@@ -117,32 +134,6 @@ class="img-fluid rounded">
 </div>
 
 </div>
-
-
-<!-- ✅ USE BACKEND TOTAL 
-<div class="text-end mt-3">
-<h5>Total: ₹{{ total }}</h5>
-</div>
-
-</div>
-</div>
-<div class="row align-items-center border-bottom py-3">
-
-<div class="col-md-2">
-<img src="{{ url_for('static', filename='uploads/' + item.image) }}"
-class="img-fluid rounded">
-</div>
-
-<div class="col-md-6">
-<h6>{{ item.product_name }}</h6>
-<small class="text-muted">Qty: {{ item.quantity }}</small>
-</div>
-
-<div class="col-md-4 text-end">
-<strong>₹{{ total }}</strong>
-</div>
-
-</div>-->
 
 {% endfor %}
 

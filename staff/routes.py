@@ -66,19 +66,36 @@ def dashboard():
 
     cur = mysql.connection.cursor()
 
+    # total orders
     cur.execute("SELECT COUNT(*) AS total FROM orders")
     total_orders = cur.fetchone()["total"]
 
-    cur.execute("SELECT COUNT(*) AS pending FROM orders WHERE status='Pending'")
-    pending_orders = cur.fetchone()["pending"]
+    # placed orders
+    cur.execute("SELECT COUNT(*) AS placed FROM orders WHERE status='Placed'")
+    placed_orders = cur.fetchone()["placed"]
 
+    # packed orders
     cur.execute("SELECT COUNT(*) AS packed FROM orders WHERE status='Packed'")
     packed_orders = cur.fetchone()["packed"]
 
+    # total products
     cur.execute("SELECT COUNT(*) AS total FROM products")
     total_products = cur.fetchone()["total"]
 
-    cur.execute("SELECT * FROM orders ORDER BY order_date DESC LIMIT 5")
+    cur.execute("""
+    SELECT 
+        o.id,
+        o.customer_id,
+        o.total_amount,
+        o.status,
+        o.order_date,
+        c.customer_name
+    FROM orders o
+    JOIN customer c
+    ON o.customer_id = c.customer_id
+    ORDER BY o.order_date DESC
+    LIMIT 5
+""")
     recent_orders = cur.fetchall()
 
     cur.close()
@@ -86,44 +103,58 @@ def dashboard():
     return render_template(
         "dashboard.html",
         total_orders=total_orders,
-        pending_orders=pending_orders,
+        placed_orders=placed_orders,
         packed_orders=packed_orders,
         total_products=total_products,
         recent_orders=recent_orders
     )
+
+@staff.route("/staff/products")
+def products():
+
+    cur = mysql.connection.cursor()
+    cur.execute("SELECT * FROM products")
+
+    products = cur.fetchall()
+
+    return render_template("staff_products.html", products=products)
 
 @staff.route("/staff/orders")
 def orders():
 
     cur = mysql.connection.cursor()
 
-    # Customer Wise Orders (with address)
+    # ✅ Customer Wise Orders
     cur.execute("""
         SELECT 
-            o.order_id,
-            u.customer_id,
-            u.customer_name,
-            u.address,
+            o.id,
+            o.customer_id,
+            c.customer_name,
+            c.address,
             o.total_amount,
-            o.status
+            o.status,
+            o.order_date
         FROM orders o
-        JOIN customer u ON o.customer_id = u.customer_id
+        JOIN customer c
+        ON o.customer_id = c.customer_id
         ORDER BY o.order_date DESC
     """)
 
     orders = cur.fetchall()
 
-    # Product Wise Orders
+
+    # ✅ Product Wise Orders (merged table)
     cur.execute("""
         SELECT 
+            o.id,
             o.customer_id,
             p.product_name,
-            oi.quantity,
-            oi.price,
+            o.quantity,
+            o.price,
             o.status
         FROM orders o
-        JOIN order_items oi ON o.order_id = oi.order_id
-        JOIN products p ON oi.product_id = p.product_id
+        JOIN products p
+        ON o.product_id = p.product_id
     """)
 
     product_orders = cur.fetchall()
@@ -136,34 +167,6 @@ def orders():
         product_orders=product_orders
     )
 
-@staff.route("/staff/update_order_status", methods=["POST"])
-def update_order_status():
-
-    order_id = request.form["order_id"]
-    new_status = request.form["status"]
-
-    cur = mysql.connection.cursor()
-
-    cur.execute("""
-        UPDATE orders
-        SET status = %s
-        WHERE order_id = %s
-    """, (new_status, order_id))
-
-    mysql.connection.commit()
-    cur.close()
-
-    return redirect(url_for("staff.orders"))
-
-@staff.route("/staff/products")
-def products():
-
-    cur = mysql.connection.cursor()
-    cur.execute("SELECT * FROM products")
-
-    products = cur.fetchall()
-
-    return render_template("staff_products.html", products=products)
 @staff.route("/staff/edit_product/<int:id>", methods=["GET","POST"])
 def edit_product(id):
 
@@ -245,6 +248,26 @@ def add_product():
 
     return render_template("staff/add_product.html")
 
+
+@staff.route("/staff/update_order_status", methods=["POST"])
+def update_order_status():
+
+    order_id = request.form["order_id"]
+    new_status = request.form["status"]
+
+    cur = mysql.connection.cursor()
+
+    cur.execute("""
+        UPDATE orders
+        SET status = %s
+        WHERE id = %s
+    """, (new_status, order_id))
+
+    mysql.connection.commit()
+    cur.close()
+
+    return redirect(url_for("staff.orders"))
+
 @staff.route("/staff/delete_product/<int:id>")
 def delete_product(id):
 
@@ -299,7 +322,6 @@ def add_supplier():
         return redirect(url_for("staff.suppliers"))
 
     return render_template("add_supplier.html", products=products)
-
 @staff.route("/customers")
 def customers():
 
@@ -311,7 +333,7 @@ def customers():
         customer.customer_name,
         customer.customer_email,
         customer.reward_points,
-        COUNT(orders.order_id) AS total_orders
+        COUNT(orders.id) AS total_orders
     FROM customer
     LEFT JOIN orders 
         ON customer.customer_id = orders.customer_id
@@ -320,8 +342,10 @@ def customers():
 
     customer = cursor.fetchall()
 
-    return render_template("staff_customers.html", customer=customer)
-
+    return render_template(
+        "staff_customers.html",
+        customer=customer
+    )
 @staff.route("/logout")
 def logout():
 
