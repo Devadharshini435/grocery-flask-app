@@ -248,6 +248,7 @@ def add_product():
 
     return render_template("staff/add_product.html")
 
+import MySQLdb.cursors
 
 @staff.route("/staff/update_order_status", methods=["POST"])
 def update_order_status():
@@ -255,13 +256,47 @@ def update_order_status():
     order_id = request.form["order_id"]
     new_status = request.form["status"]
 
-    cur = mysql.connection.cursor()
+    cur = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
+    # get order details first
+    cur.execute("""
+        SELECT id, status, customer_id, total_amount
+        FROM orders
+        WHERE id = %s
+    """, (order_id,))
+
+    order = cur.fetchone()
+
+    if not order:
+        cur.close()
+        return redirect(url_for("staff.orders"))
+
+    old_status = order["status"]
+    customer_id = order["customer_id"]
+    total = order["total_amount"] or 0
+
+    # update status
     cur.execute("""
         UPDATE orders
         SET status = %s
         WHERE id = %s
     """, (new_status, order_id))
+
+
+    # ✅ reward only when first time Delivered
+    if new_status.strip().lower() == "delivered" and old_status.strip().lower() != "delivered":
+
+        coins = int(total // 100)
+
+        print("ADDING COINS:", coins)   # debug
+        print("CUSTOMER:", customer_id)
+
+        cur.execute("""
+            UPDATE customer
+            SET reward_points = reward_points + %s
+            WHERE customer_id = %s
+        """, (coins, customer_id))
+
 
     mysql.connection.commit()
     cur.close()

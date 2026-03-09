@@ -481,9 +481,6 @@ def products():
         all_categories=all_categories
     )
 
-@app.route('/payment')
-def payment():
-    return render_template('payment.html')
 
 @app.route('/orders')
 def orders():
@@ -748,6 +745,15 @@ def payment():
     # 🔹 Handle payment submission
     if request.method == 'POST':
         session['payment_method'] = request.form['payment_method']
+        session['payment_status'] = 'success'
+        
+
+        coins_used = session.get("coins_used", 0)
+        coins_used = int(coins_used)
+
+        buy_now = session.get('buy_now')
+        order_id = None
+
         cur.close()
         return redirect(url_for('place_order'))
 
@@ -884,8 +890,10 @@ def remove_cart(cart_id):
     cur.close()
 
     return redirect(url_for('cart'))
+
 @app.route('/place_order')
 def place_order():
+
     customer_id = session.get('customer_id')
     if not customer_id:
         return redirect(url_for('login'))
@@ -893,8 +901,12 @@ def place_order():
     cur = mysql.connection.cursor()
 
     try:
+
+        coins_used = session.get("coins_used", 0)
+        coins_used = int(coins_used)
+
         buy_now = session.get('buy_now')
-        total_amount = 0
+        order_id = None
 
         # ================= BUY NOW =================
         if buy_now:
@@ -915,16 +927,38 @@ def place_order():
 
             total_amount = product['price'] * buy_now['quantity']
 
+            if coins_used > total_amount:
+                coins_used = total_amount
+
+            payable_amount = total_amount - coins_used
+
             cur.execute("""
                 INSERT INTO orders
-                (customer_id, product_id, quantity, price, total_amount, status)
-                VALUES (%s,%s,%s,%s,%s,'Placed')
+                (customer_id, product_id, quantity, price, total_amount, coins_used, payable_amount, status)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,'Placed')
             """, (
                 customer_id,
                 buy_now['product_id'],
                 buy_now['quantity'],
                 product['price'],
-                total_amount
+                total_amount,
+                coins_used,
+                payable_amount
+            ))
+
+            order_id = cur.lastrowid
+
+            payment_method = session.get("payment_method")
+
+            cur.execute("""
+                INSERT INTO payment
+                (order_id, customer_id, amount, payment_method, payment_status)
+                VALUES (%s,%s,%s,%s,'Paid')
+            """, (
+                order_id,
+                customer_id,
+                payable_amount,
+                payment_method
             ))
 
             cur.execute("""
@@ -954,23 +988,52 @@ def place_order():
             if not cart_items:
                 raise Exception("Cart empty")
 
+            total_amount = 0
+
             for item in cart_items:
 
                 if item['stock'] < item['quantity']:
                     raise Exception("Stock issue")
 
                 total = item['price'] * item['quantity']
+                total_amount += total
+
+            if coins_used > total_amount:
+                coins_used = total_amount
+
+            payable_amount = total_amount - coins_used
+
+            for item in cart_items:
+
+                total = item['price'] * item['quantity']
 
                 cur.execute("""
                     INSERT INTO orders
-                    (customer_id, product_id, quantity, price, total_amount, status)
-                    VALUES (%s,%s,%s,%s,%s,'Placed')
+                    (customer_id, product_id, quantity, price, total_amount, coins_used, payable_amount, status)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,'Placed')
                 """, (
                     customer_id,
                     item['product_id'],
                     item['quantity'],
                     item['price'],
-                    total
+                    total,
+                    coins_used,
+                    payable_amount
+                ))
+
+                order_id = cur.lastrowid
+
+                payment_method = session.get("payment_method")
+
+                cur.execute("""
+                    INSERT INTO payment
+                    (order_id, customer_id, amount, payment_method, payment_status)
+                    VALUES (%s,%s,%s,%s,'Paid')
+                """, (
+                    order_id,
+                    customer_id,
+                    payable_amount,
+                    payment_method
                 ))
 
                 cur.execute("""
@@ -987,9 +1050,18 @@ def place_order():
                 (customer_id,)
             )
 
+        # ✅ reduce reward points
+        cur.execute("""
+            UPDATE customer
+            SET reward_points = reward_points - %s
+            WHERE customer_id = %s
+        """, (coins_used, customer_id))
+
         mysql.connection.commit()
 
-        return redirect(url_for('orders'))
+        session.pop("coins_used", None)
+
+        return redirect(url_for('order_success', order_id=order_id))
 
     except Exception as e:
         mysql.connection.rollback()
@@ -1515,12 +1587,41 @@ def admin_orders():
         orders=orders,
         order_products=order_products
     )
-
-
-
 @app.route('/order_success')
 def order_success():
-    return "Order placed successfully!"
+
+    order_id = request.args.get("order_id")
+
+    cur = mysql.connection.cursor()
+
+    cur.execute("""
+        SELECT total_amount
+        FROM orders
+        WHERE id = %s
+    """, (order_id,))
+
+    data = cur.fetchone()
+    cur.close()
+
+    if not data:
+        order = {
+            "total_amount": 0,
+            "coins_used": 0,
+            "payable_amount": 0
+        }
+    else:
+        total = data["total_amount"]
+
+        order = {
+            "total_amount": total,
+            "coins_used": 0,
+            "payable_amount": total
+        }
+
+    return render_template(
+        "order_success.html",
+        order=order
+    )
 
 @app.route("/admin/users")
 def admin_users():
