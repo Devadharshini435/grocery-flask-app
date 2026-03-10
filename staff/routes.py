@@ -4,6 +4,7 @@ from . import staff
 from extensions import mysql
 
 
+
 @staff.route("/staff/login", methods=["GET", "POST"])
 def staff_login():
 
@@ -258,11 +259,19 @@ def update_order_status():
 
     cur = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
-    # get order details first
+    # ✅ get order + email + date
     cur.execute("""
-        SELECT id, status, customer_id, total_amount
-        FROM orders
-        WHERE id = %s
+    SELECT 
+        o.id,
+        o.status,
+        o.customer_id,
+        o.total_amount,
+        o.order_date,
+        c.customer_email
+    FROM orders o
+    JOIN customer c
+        ON o.customer_id = c.customer_id
+    WHERE o.id = %s
     """, (order_id,))
 
     order = cur.fetchone()
@@ -273,9 +282,9 @@ def update_order_status():
 
     old_status = order["status"]
     customer_id = order["customer_id"]
-    total = order["total_amount"] or 0
+    total = float(order["total_amount"] or 0)
 
-    # update status
+    # ✅ update status
     cur.execute("""
         UPDATE orders
         SET status = %s
@@ -283,20 +292,44 @@ def update_order_status():
     """, (new_status, order_id))
 
 
-    # ✅ reward only when first time Delivered
-    if new_status.strip().lower() == "delivered" and old_status.strip().lower() != "delivered":
+    # ✅ SEND EMAIL FOR EVERY STATUS
+    send_status_email(
+        order["customer_email"],
+        order_id,
+        order["order_date"],
+        new_status
+    )
+
+
+    # ✅ ADD REWARD ONLY WHEN DELIVERED
+    if (
+        new_status.strip().lower() == "delivered"
+        and old_status.strip().lower() != "delivered"
+    ):
 
         coins = int(total // 100)
 
-        print("ADDING COINS:", coins)   # debug
-        print("CUSTOMER:", customer_id)
-
+        # check already rewarded
         cur.execute("""
-            UPDATE customer
-            SET reward_points = reward_points + %s
-            WHERE customer_id = %s
-        """, (coins, customer_id))
+            SELECT id
+            FROM customer_rewards
+            WHERE order_id = %s
+        """, (order_id,))
 
+        exists = cur.fetchone()
+
+        if not exists and coins > 0:
+
+            cur.execute("""
+                INSERT INTO customer_rewards
+                (customer_id, points_added, balance, order_id)
+                VALUES (%s,%s,%s,%s)
+            """, (
+                customer_id,
+                coins,
+                coins,
+                order_id
+            ))
 
     mysql.connection.commit()
     cur.close()
@@ -357,25 +390,36 @@ def add_supplier():
         return redirect(url_for("staff.suppliers"))
 
     return render_template("add_supplier.html", products=products)
+
 @staff.route("/customers")
 def customers():
 
     cursor = mysql.connection.cursor()
 
     cursor.execute("""
-    SELECT 
-        customer.customer_id,
-        customer.customer_name,
-        customer.customer_email,
-        customer.reward_points,
-        COUNT(orders.id) AS total_orders
-    FROM customer
-    LEFT JOIN orders 
-        ON customer.customer_id = orders.customer_id
-    GROUP BY customer.customer_id
+        SELECT 
+            c.customer_id,
+            c.customer_name,
+            c.customer_email,
+
+            COALESCE(SUM(r.balance),0) AS reward_points,
+
+            COUNT(o.id) AS total_orders
+
+        FROM customer c
+
+        LEFT JOIN orders o
+            ON c.customer_id = o.customer_id
+
+        LEFT JOIN customer_rewards r
+            ON c.customer_id = r.customer_id
+
+        GROUP BY c.customer_id
     """)
 
     customer = cursor.fetchall()
+
+    cursor.close()
 
     return render_template(
         "staff_customers.html",

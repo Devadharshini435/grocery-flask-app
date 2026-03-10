@@ -1,102 +1,116 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <title>My Profile</title>
-        <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 
-    <!-- Bootstrap -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
-    <!-- Bootstrap Icons -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 
-    <style>
-        .coin-pill {
-    border: 1.5px solid #d4af37; /* soft gold */
-    color: #333;
-    padding: 6px 16px;
-    border-radius: 50px;
-    font-weight: 600;
-    background-color: #fff;
-}
+<!-- Bootstrap -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
-        .profile-card {
-            border-radius: 16px;
-        }
+<!-- Bootstrap Icons -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
 
-        .profile-avatar {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            background-color: #e9ecef;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 36px;
-            color: #6c757d;
-            margin: auto;
-        }
+<style>
 
-        .profile-section {
-            border-top: 1px solid #eee;
-            padding-top: 15px;
-            margin-top: 15px;
-        }
+    .coin-pill {
+        border: 1.5px solid #d4af37;
+        color: #333;
+        padding: 6px 16px;
+        border-radius: 50px;
+        font-weight: 600;
+        background-color: #fff;
+    }
 
-        .reward-box {
-            background: #f8f9fa;
-            border-radius: 12px;
-            padding: 12px 16px;
-        }
-    </style>
+    .profile-card {
+        border-radius: 16px;
+    }
+
+    .profile-avatar {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background-color: #e9ecef;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 36px;
+        color: #6c757d;
+        margin: auto;
+    }
+
+    .profile-section {
+        border-top: 1px solid #eee;
+        padding-top: 15px;
+        margin-top: 15px;
+    }
+
+    .reward-box {
+        background: #f8f9fa;
+        border-radius: 12px;
+        padding: 12px 16px;
+    }
+
+</style>
+
+
 </head>
 
 <body class="bg-light">
-    {% include 'navbar.html' %}
 
+{% include 'navbar.html' %}
 
 <div class="container mt-5" style="max-width: 540px;">
-    <div class="card shadow-sm profile-card">
-        <div class="card-body">
 
-            <!-- Avatar -->
-            <div class="profile-avatar mb-3">
-                <i class="bi bi-person"></i>
+<div class="card shadow-sm profile-card">
+
+    <div class="card-body">
+
+        <!-- Avatar -->
+        <div class="profile-avatar mb-3">
+            <i class="bi bi-person"></i>
+        </div>
+
+        <!-- Name -->
+        <h4 class="text-center mb-1">
+            {{ user.customer_name }}
+        </h4>
+
+        <p class="text-center text-muted mb-3">
+            {{ user.customer_email }}
+        </p>
+
+
+        <!-- Rewards -->
+        <div class="reward-box d-flex justify-content-between align-items-center">
+
+            <div class="d-flex align-items-center">
+                <i class="bi bi-coin text-warning fs-4 me-2"></i>
+                <span class="fw-semibold">Reward Coins</span>
             </div>
 
-            <!-- Name -->
-            <h4 class="text-center mb-1">{{ user.customer_name }}</h4>
-            <p class="text-center text-muted mb-3">{{ user.email }}</p>
-
-            <!-- Rewards -->
-            <div class="reward-box d-flex justify-content-between align-items-center">
-                <div class="d-flex align-items-center">
-                    <i class="bi bi-coin text-warning fs-4 me-2"></i>
-                    <span class="fw-semibold">Reward Coins</span>
-                </div>
-
-                <span class="coin-pill">
-    {{ user.reward_points}}
-</span>
-
-            </div>
-
-            <!-- Summary -->
-            <div class="profile-section text-center">
-                <p class="mb-1 text-muted">Total Orders</p>
-                <h5 class="fw-bold">{{ user.total_orders }}</h5>
-            </div>
-
-            <!-- Action -->
-            <div class="d-grid mt-4">
-                <a href="/" class="btn btn-primary btn-lg">
-                    Continue Shopping
-                </a>
-            </div>
+            <span class="coin-pill">
+                {{ reward_points }}
+            </span>
 
         </div>
+
+
+        <!-- Action -->
+        <div class="d-grid mt-4">
+            <a href="/" class="btn btn-primary btn-lg">
+                Continue Shopping
+            </a>
+        </div>
+
+
     </div>
+
+</div>
+
 </div>
 
 </body>

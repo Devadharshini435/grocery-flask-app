@@ -1,81 +1,137 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <title>Order Successful</title>
 
-    <!-- Bootstrap -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
-    <!-- Bootstrap Icons -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+<!-- Bootstrap -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
-    <style>
-        .success-card {
-            border-radius: 16px;
-        }
-        .amount-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 10px;
-        }
-        .coin-pill {
-            border: 1.5px solid #d4af37;
-            padding: 4px 14px;
-            border-radius: 50px;
-            font-weight: 600;
-        }
-    </style>
+<!-- Bootstrap Icons -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+
+<style>
+
+    .success-card {
+        border-radius: 16px;
+    }
+
+    .amount-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 10px;
+    }
+
+    .coin-pill {
+        border: 1.5px solid #d4af37;
+        padding: 4px 14px;
+        border-radius: 50px;
+        font-weight: 600;
+    }
+
+</style>
+
+
 </head>
 
 <body class="bg-light">
 
 <div class="container mt-5" style="max-width: 520px;">
-    <div class="card shadow-sm success-card">
-        <div class="card-body">
 
-            <!-- Icon -->
-            <div class="text-center mb-3">
-                <i class="bi bi-check-circle-fill text-success fs-1"></i>
-            </div>
+```
+<div class="card shadow-sm success-card">
 
-            <h4 class="text-center mb-4">Order Placed Successfully</h4>
 
-            <!-- Amount Summary -->
-            <div class="amount-row">
-                <span>Cart Total</span>
-                <strong>₹{{ order['total_amount'] }}</strong>
-            </div>
+    <div class="card-body">
 
-            <div class="amount-row align-items-center">
-                <span>
-                    Coins Applied
-                    <i class="bi bi-coin text-warning ms-1"></i>
-                </span>
-                <span class="coin-pill">
-                    - {{ order['coins_used'] }}
-                </span>
-            </div>
 
-            <hr>
+        <!-- Success Icon -->
+        <div class="text-center mb-3">
+            <i class="bi bi-check-circle-fill text-success fs-1"></i>
+        </div>
 
-            <div class="amount-row fs-5">
-                <strong>Amount Paid</strong>
-                <strong>₹{{ order['payable_amount'] }}</strong>
-            </div>
 
-            <!-- Actions -->
-            <div class="d-grid gap-2 mt-4">
-                <a href="/orders" class="btn btn-outline-secondary">
-                    View My Orders
-                </a>
-                <a href="/" class="btn btn-primary">
-                    Continue Shopping
-                </a>
-            </div>
+        <h4 class="text-center mb-4">
+            Order Placed Successfully
+        </h4>
+
+
+
+        <!-- Cart Total -->
+        <div class="amount-row">
+            <span>Cart Total</span>
+            <strong>₹{{ order['total_amount'] }}</strong>
+        </div>
+
+
+
+        <!-- Coins Used -->
+        <div class="amount-row align-items-center">
+
+            <span>
+                Coins Applied
+                <i class="bi bi-coin text-warning ms-1"></i>
+            </span>
+
+            <span class="coin-pill">
+                - {{ order['coins_used'] }}
+            </span>
 
         </div>
+
+
+
+        <hr>
+
+
+
+        <!-- Amount Paid -->
+        <div class="amount-row fs-5">
+
+            <strong>Amount Paid</strong>
+
+            <strong>
+                ₹{{ order['payable_amount'] }}
+            </strong>
+
+        </div>
+
+
+
+        <!-- Reward Earned -->
+        
+
+
+
+        <!-- Buttons -->
+        <div class="d-grid gap-2 mt-4">
+
+            <a href="/orders"
+               class="btn btn-outline-secondary">
+
+                View My Orders
+
+            </a>
+
+
+            <a href="/"
+               class="btn btn-primary">
+
+                Continue Shopping
+
+            </a>
+
+        </div>
+
+
     </div>
+
+
+</div>
+
+
 </div>
 
 </body>

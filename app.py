@@ -70,13 +70,7 @@ def register():
 
     return render_template("register.html")
 
-def admin_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if "admin_id" not in session:
-            return redirect(url_for("admin_login"))
-        return f(*args, **kwargs)
-    return decorated_function
+
 
 # 1️⃣ Define the function once
 def send_status_email(to_email, order_id, order_date, status):
@@ -413,6 +407,7 @@ def cart_count_processor():
 
 @app.route("/profile")
 def profile():
+
     if "customer_id" not in session:
         return redirect(url_for("login"))
 
@@ -420,20 +415,35 @@ def profile():
 
     cur = mysql.connection.cursor()
 
+    # ✅ get customer info
     cur.execute("""
         SELECT
             customer_name,
-            customer_email,
-            reward_points
+            customer_email
         FROM customer
         WHERE customer_id = %s
     """, (customer_id,))
 
     user = cur.fetchone()
+
+    # ✅ get reward balance from rewards table
+    cur.execute("""
+        SELECT COALESCE(SUM(balance),0) AS reward_points
+        FROM customer_rewards
+        WHERE customer_id = %s
+    """, (customer_id,))
+
+    reward = cur.fetchone()
+
     cur.close()
 
-    return render_template("profile.html", user=user)
+    reward_points = reward["reward_points"]
 
+    return render_template(
+        "profile.html",
+        user=user,
+        reward_points=reward_points
+    )
 # ---------- Logout ----------
 @app.route('/logout')
 def logout():
@@ -731,6 +741,7 @@ def address():
 
 @app.route('/payment', methods=['GET', 'POST'])
 def payment():
+
     customer_id = session.get('customer_id')
     if not customer_id:
         return redirect(url_for('login'))
@@ -740,30 +751,42 @@ def payment():
         return redirect(url_for('address'))
 
     buy_now = session.get('buy_now')
-    cur = mysql.connection.cursor()   # ✅ FIXED
 
-    # 🔹 Handle payment submission
+    cur = mysql.connection.cursor()
+
+    # ✅ get reward balance from rewards table
+    cur.execute("""
+        SELECT COALESCE(SUM(balance),0) AS reward_points
+        FROM customer_rewards
+        WHERE customer_id = %s
+    """, (customer_id,))
+
+    reward_data = cur.fetchone()
+    reward_points = reward_data["reward_points"]
+
+    # 🔹 POST (submit payment)
     if request.method == 'POST':
+
         session['payment_method'] = request.form['payment_method']
         session['payment_status'] = 'success'
-        
 
-        coins_used = session.get("coins_used", 0)
-        coins_used = int(coins_used)
-
-        buy_now = session.get('buy_now')
-        order_id = None
+        coins_used = request.form.get("coins_used", 0)
+        session["coins_used"] = int(coins_used)
 
         cur.close()
         return redirect(url_for('place_order'))
 
-    # ================= BUY NOW FLOW =================
+    # ================= BUY NOW =================
+
     if buy_now:
+
         cur.execute(
-            "SELECT * FROM products WHERE product_id = %s",
+            "SELECT * FROM products WHERE product_id=%s",
             (buy_now['product_id'],)
         )
+
         product = cur.fetchone()
+
         cur.close()
 
         if not product:
@@ -774,10 +797,12 @@ def payment():
             mode='buy_now',
             product=product,
             quantity=buy_now['quantity'],
-            address=address
+            address=address,
+            reward_points=reward_points
         )
 
-    # ================= CART FLOW =================
+    # ================= CART =================
+
     cur.execute("""
         SELECT 
             p.product_name,
@@ -789,19 +814,25 @@ def payment():
     """, (customer_id,))
 
     cart_items = cur.fetchall()
-    cur.close()
 
     if not cart_items:
+        cur.close()
         return "Your cart is empty"
 
-    total_price = sum(item['price'] * item['quantity'] for item in cart_items)
+    total_price = sum(
+        item['price'] * item['quantity']
+        for item in cart_items
+    )
+
+    cur.close()
 
     return render_template(
         'payment.html',
         mode='cart',
         cart_items=cart_items,
         total_price=total_price,
-        address=address
+        address=address,
+        reward_points=reward_points
     )
 
 @app.route('/cart')
@@ -927,23 +958,17 @@ def place_order():
 
             total_amount = product['price'] * buy_now['quantity']
 
-            if coins_used > total_amount:
-                coins_used = total_amount
-
-            payable_amount = total_amount - coins_used
-
+            # ✅ insert order (no coins columns)
             cur.execute("""
                 INSERT INTO orders
-                (customer_id, product_id, quantity, price, total_amount, coins_used, payable_amount, status)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,'Placed')
+                (customer_id, product_id, quantity, price, total_amount, status)
+                VALUES (%s,%s,%s,%s,%s,'Placed')
             """, (
                 customer_id,
                 buy_now['product_id'],
                 buy_now['quantity'],
                 product['price'],
-                total_amount,
-                coins_used,
-                payable_amount
+                total_amount
             ))
 
             order_id = cur.lastrowid
@@ -957,10 +982,11 @@ def place_order():
             """, (
                 order_id,
                 customer_id,
-                payable_amount,
+                total_amount,
                 payment_method
             ))
 
+            # ✅ update stock
             cur.execute("""
                 UPDATE products
                 SET stock = stock - %s
@@ -998,27 +1024,20 @@ def place_order():
                 total = item['price'] * item['quantity']
                 total_amount += total
 
-            if coins_used > total_amount:
-                coins_used = total_amount
-
-            payable_amount = total_amount - coins_used
-
             for item in cart_items:
 
                 total = item['price'] * item['quantity']
 
                 cur.execute("""
                     INSERT INTO orders
-                    (customer_id, product_id, quantity, price, total_amount, coins_used, payable_amount, status)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,'Placed')
+                    (customer_id, product_id, quantity, price, total_amount, status)
+                    VALUES (%s,%s,%s,%s,%s,'Placed')
                 """, (
                     customer_id,
                     item['product_id'],
                     item['quantity'],
                     item['price'],
-                    total,
-                    coins_used,
-                    payable_amount
+                    total
                 ))
 
                 order_id = cur.lastrowid
@@ -1032,7 +1051,7 @@ def place_order():
                 """, (
                     order_id,
                     customer_id,
-                    payable_amount,
+                    total,
                     payment_method
                 ))
 
@@ -1050,16 +1069,21 @@ def place_order():
                 (customer_id,)
             )
 
-        # ✅ reduce reward points
-        cur.execute("""
-            UPDATE customer
-            SET reward_points = reward_points - %s
-            WHERE customer_id = %s
-        """, (coins_used, customer_id))
+        # ✅ store reward usage in separate table
+        if coins_used > 0:
+
+            cur.execute("""
+                INSERT INTO customer_rewards
+                (customer_id, points_used, balance)
+                VALUES (%s,%s,0)
+            """, (
+                customer_id,
+                coins_used
+            ))
 
         mysql.connection.commit()
 
-        session.pop("coins_used", None)
+        
 
         return redirect(url_for('order_success', order_id=order_id))
 
@@ -1069,6 +1093,7 @@ def place_order():
 
     finally:
         cur.close()
+
 @app.route('/order/<int:order_id>')
 def order_details(order_id):
 
@@ -1354,154 +1379,53 @@ def download_invoice(order_id):
         mimetype="application/pdf"
     )
 
-@app.route('/update_order_status', methods=['POST'])
-def update_order_status():
+@app.route('/order_success')
+def order_success():
 
-    order_id = request.form['order_id']
-    status = request.form['status']
+    order_id = request.args.get("order_id")
 
-    conn = sqlite3.connect('database.db')
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
+    cur = mysql.connection.cursor()
 
-    # Update order
     cur.execute("""
-        UPDATE orders
-        SET status = ?
-        WHERE id = ?
-    """, (status, order_id))
-
-    conn.commit()
-
-    # Get user email
-    cur.execute("""
-        SELECT users.email, orders.order_date
+        SELECT total_amount, customer_id
         FROM orders
-        JOIN users ON orders.user_id = users.id
-        WHERE orders.id = ?
+        WHERE id = %s
     """, (order_id,))
 
-    order = cur.fetchone()
-    conn.close()
+    data = cur.fetchone()
 
-    print("STATUS:", status)
-
-    # ✅ Send mail when delivered
-    if order and status.lower() == "delivered":
-        print("Sending email...")
-        send_status_email(
-            order["email"],
-            order_id,
-            order["order_date"],
-            status
-        )
-
-    return redirect(url_for('admin_orders'))
-
-@app.route("/staff/login", methods=["GET", "POST"])
-def staff_login():
-
-    if request.method == "POST":
-        email = request.form["email"]
-        password = request.form["password"]
-
-        cur = mysql.connection.cursor()
-        cur.execute(
-            "SELECT * FROM staff WHERE email = %s AND password = %s AND status='active'",
-            (email, password)
-        )
-        staff = cur.fetchone()
+    if not data:
         cur.close()
+        return "Order not found"
 
-        if staff:
-            session["staff_id"] = staff[0]      # id
-            session["staff_logged_in"] = True
-            return redirect("/staff/dashboard")
-        else:
-            return "Invalid staff credentials"
+    total = data["total_amount"]
 
-    return render_template("staff/login.html")
+    # coins used from session
+    coins_used = int(session.get("coins_used") or 0)
 
-@app.route("/staff/register", methods=["GET", "POST"])
-def staff_register():
+    payable_amount = total - coins_used
 
-    if request.method == "POST":
-        name = request.form["name"]
-        email = request.form["email"]
-        phone = request.form["phone"]
-        password = request.form["password"]   # plain password
+    if payable_amount < 0:
+        payable_amount = 0
 
-        cur = mysql.connection.cursor()
-        cur.execute("""
-            INSERT INTO staff (name, email, phone, password)
-            VALUES (%s, %s, %s, %s)
-        """, (name, email, phone, password))
+    # ❌ REMOVE reward logic from here
+    # reward will be added when order delivered
 
-        mysql.connection.commit()
-        cur.close()
+    cur.close()
 
-        return redirect("/staff/login")
+    order = {
+        "total_amount": total,
+        "coins_used": coins_used,
+        "payable_amount": payable_amount
+    }
 
-    return render_template("staff/register.html")
-
-
-@app.route("/admin/dashboard")
-@admin_required
-def admin_dashboard():
-    if "admin_id" not in session:
-        return redirect("/admin/login")
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    # Total products
-    cur.execute("SELECT COUNT(*) FROM products")
-    total_products = cur.fetchone()[0]
-
-    # Total orders
-    cur.execute("SELECT COUNT(*) FROM orders")
-    total_orders = cur.fetchone()[0]
-
-    # Orders by status
-    cur.execute("SELECT COUNT(*) FROM orders WHERE status='Placed'")
-    placed = cur.fetchone()[0]
-
-    cur.execute("SELECT COUNT(*) FROM orders WHERE status='Packed'")
-    packed = cur.fetchone()[0]
-
-    cur.execute("SELECT COUNT(*) FROM orders WHERE status='Shipped'")
-    shipped = cur.fetchone()[0]
-
-    cur.execute("SELECT COUNT(*) FROM orders WHERE status='Delivered'")
-    delivered = cur.fetchone()[0]
-
-    cur.execute("SELECT COUNT(*) FROM users WHERE role = 'user'")
-    total_users = cur.fetchone()[0]
-
-
-    # 🔔 NEW: Fetch latest 5 new orders
-    cur.execute("""
-        SELECT id, user_id, order_date
-        FROM orders
-        WHERE status='Placed'
-        ORDER BY order_date DESC
-        LIMIT 5
-    """)
-    new_orders = cur.fetchall()
-
-    conn.close()
+    session.pop("coins_used", None)
 
     return render_template(
-        "admin_dashboard.html",
-        total_products=total_products,
-        total_orders=total_orders,
-        placed=placed,
-        packed=packed,
-        shipped=shipped,
-        delivered=delivered,
-        total_users=total_users,
-        new_orders=new_orders   # 🔔 send to template
+        "order_success.html",
+        order=order
     )
+
 
 @app.route("/admin/orders", methods=["GET", "POST"])
 def admin_orders():
@@ -1587,41 +1511,7 @@ def admin_orders():
         orders=orders,
         order_products=order_products
     )
-@app.route('/order_success')
-def order_success():
 
-    order_id = request.args.get("order_id")
-
-    cur = mysql.connection.cursor()
-
-    cur.execute("""
-        SELECT total_amount
-        FROM orders
-        WHERE id = %s
-    """, (order_id,))
-
-    data = cur.fetchone()
-    cur.close()
-
-    if not data:
-        order = {
-            "total_amount": 0,
-            "coins_used": 0,
-            "payable_amount": 0
-        }
-    else:
-        total = data["total_amount"]
-
-        order = {
-            "total_amount": total,
-            "coins_used": 0,
-            "payable_amount": total
-        }
-
-    return render_template(
-        "order_success.html",
-        order=order
-    )
 
 @app.route("/admin/users")
 def admin_users():
@@ -1655,107 +1545,6 @@ def admin_users():
 def admin_logout():
     session.pop("admin_logged_in", None)
     return redirect("/admin/login")
-
-
-
-@app.route("/admin/products")
-@admin_required
-def admin_products():
-    conn = sqlite3.connect("database.db")
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM products")
-    products = cur.fetchall()
-    conn.close()
-
-    return render_template("admin_products.html", products=products)
-
-
-
-@app.route("/admin/add-product", methods=["GET", "POST"])
-def admin_add_product():
-
-    # 🔐 Optional: protect admin page
-    if not session.get("admin_logged_in"):
-        return redirect(url_for("admin_login"))
-
-    if request.method == "POST":
-        product_name = request.form["product_name"]
-        dish_name = request.form.get("dish_name")
-        category = request.form["category"]
-        description = request.form["description"]
-        price = request.form["price"]
-        stock = request.form["stock"]
-
-        image_file = request.files["image"]
-
-        # Save image
-        filename = secure_filename(image_file.filename)
-        image_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-        image_file.save(image_path)
-
-        # Store relative path in DB
-        image_db_path = f"{filename}"
-
-        conn = sqlite3.connect("database.db")
-        cur = conn.cursor()
-
-        cur.execute("""
-            INSERT INTO products 
-            (product_name, dish_name, category, description, price, stock, image)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            product_name,
-            dish_name,
-            category,
-            description,
-            price,
-            stock,
-            image_db_path
-        ))
-
-        conn.commit()
-
-        send_new_product_email(description)
-        conn.close()
-
-        return redirect(url_for("admin_products"))
-
-    return render_template("admin_add_product.html")
-
-@app.route("/admin/edit-product/<int:product_id>", methods=["GET", "POST"])
-def edit_product(product_id):
-    if not session.get("admin_logged_in"):
-        return redirect(url_for("admin_login"))
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    if request.method == "POST":
-        product_name = request.form["product_name"]
-        dish_name = request.form["dish_name"]
-        category = request.form["category"]
-        description = request.form["description"]
-        price = request.form["price"]
-        stock = request.form["stock"]
-
-        cur.execute("""
-            UPDATE products
-            SET product_name=?, dish_name=?, category=?, description=?, price=?, stock=?
-            WHERE id=?
-        """, (product_name, dish_name, category, description, price, stock, product_id))
-
-        conn.commit()
-        conn.close()
-
-        return redirect(url_for("admin_products"))
-
-    # GET request → fetch product
-    cur.execute("SELECT * FROM products WHERE id=?", (product_id,))
-    product = cur.fetchone()
-    conn.close()
-
-    return render_template("admin_edit_product.html", product=product)
 
 
 @app.route("/admin/delete-product/<int:product_id>")
