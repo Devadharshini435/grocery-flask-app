@@ -72,97 +72,6 @@ def register():
 
 
 
-# 1️⃣ Define the function once
-def send_status_email(to_email, order_id, order_date, status):
-
-    msg = EmailMessage()
-    msg["Subject"] = "🎉 Your Order Has Been Delivered!"
-    msg["From"] = EMAIL_ADDRESS
-    msg["To"] = to_email
-
-    # Plain text fallback
-    msg.set_content("Your order has been delivered successfully.")
-
-    # HTML DESIGN EMAIL
-    html_content = f"""
-    <html>
-    <body style="font-family: Arial, sans-serif; background:#f4f6f8; padding:20px;">
-
-        <div style="
-            max-width:600px;
-            margin:auto;
-            background:white;
-            border-radius:10px;
-            overflow:hidden;
-            box-shadow:0 0 10px rgba(0,0,0,0.1);
-        ">
-
-            <!-- Header -->
-            <div style="background:#28a745;color:white;padding:20px;text-align:center;">
-                <h2>Dish2Cart</h2>
-                <h3>✅ Order Delivered Successfully</h3>
-            </div>
-
-            <!-- Body -->
-            <div style="padding:25px;color:#333;">
-
-                <p>Hello Customer,</p>
-
-                <p>Your order has been <b style="color:green;">Delivered</b> 🎉</p>
-
-                <table style="width:100%;margin-top:15px;border-collapse:collapse;">
-                    <tr>
-                        <td style="padding:8px;"><b>Order ID</b></td>
-                        <td style="padding:8px;">#{order_id}</td>
-                    </tr>
-                    <tr style="background:#f2f2f2;">
-                        <td style="padding:8px;"><b>Order Date</b></td>
-                        <td style="padding:8px;">{order_date}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding:8px;"><b>Status</b></td>
-                        <td style="padding:8px;color:green;"><b>{status}</b></td>
-                    </tr>
-                </table>
-
-                <p style="margin-top:20px;">
-                    Thank you for shopping with us ❤️<br>
-                    We hope to see you again!
-                </p>
-
-                <div style="text-align:center;margin-top:25px;">
-                    <a href="http://127.0.0.1:5000"
-                       style="
-                       background:#28a745;
-                       color:white;
-                       padding:12px 20px;
-                       text-decoration:none;
-                       border-radius:5px;
-                       font-weight:bold;">
-                       Continue Shopping
-                    </a>
-                </div>
-
-            </div>
-
-            <!-- Footer -->
-            <div style="background:#f1f1f1;padding:15px;text-align:center;font-size:12px;">
-                © 2026 Dish2Cart • Grocery Management System
-            </div>
-
-        </div>
-
-    </body>
-    </html>
-    """
-
-    msg.add_alternative(html_content, subtype="html")
-
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-        server.send_message(msg)
-
-
 @app.route('/set-password', methods=['POST', 'GET'])
 def set_password():
     if request.method == 'POST':
@@ -404,7 +313,6 @@ def cart_count_processor():
 
     return dict(cart_count=result["total"] if result else 0)
 # ---------- Profile ----------
-
 @app.route("/profile")
 def profile():
 
@@ -426,18 +334,22 @@ def profile():
 
     user = cur.fetchone()
 
-    # ✅ get reward balance from rewards table
+
+    # ✅ get latest reward balance
     cur.execute("""
-        SELECT COALESCE(SUM(balance),0) AS reward_points
+        SELECT balance
         FROM customer_rewards
         WHERE customer_id = %s
+        ORDER BY id DESC
+        LIMIT 1
     """, (customer_id,))
 
     reward = cur.fetchone()
 
     cur.close()
 
-    reward_points = reward["reward_points"]
+    reward_points = reward["balance"] if reward else 0
+
 
     return render_template(
         "profile.html",
@@ -756,13 +668,16 @@ def payment():
 
     # ✅ get reward balance from rewards table
     cur.execute("""
-        SELECT COALESCE(SUM(balance),0) AS reward_points
-        FROM customer_rewards
-        WHERE customer_id = %s
-    """, (customer_id,))
+    SELECT balance
+    FROM customer_rewards
+    WHERE customer_id = %s
+    ORDER BY id DESC
+    LIMIT 1
+""", (customer_id,))
 
-    reward_data = cur.fetchone()
-    reward_points = reward_data["reward_points"]
+    row = cur.fetchone()
+
+    reward_points = row["balance"] if row else 0
 
     # 🔹 POST (submit payment)
     if request.method == 'POST':
@@ -1070,16 +985,7 @@ def place_order():
             )
 
         # ✅ store reward usage in separate table
-        if coins_used > 0:
-
-            cur.execute("""
-                INSERT INTO customer_rewards
-                (customer_id, points_used, balance)
-                VALUES (%s,%s,0)
-            """, (
-                customer_id,
-                coins_used
-            ))
+        
 
         mysql.connection.commit()
 
@@ -1382,15 +1288,20 @@ def download_invoice(order_id):
 @app.route('/order_success')
 def order_success():
 
+    print("order_success called")
+
     order_id = request.args.get("order_id")
+
+    if not order_id:
+        return "Order ID missing"
 
     cur = mysql.connection.cursor()
 
     cur.execute("""
-        SELECT total_amount, customer_id
-        FROM orders
-        WHERE id = %s
-    """, (order_id,))
+    SELECT total_amount, customer_id
+    FROM orders
+    WHERE id = %s
+""", (order_id,))
 
     data = cur.fetchone()
 
@@ -1399,8 +1310,8 @@ def order_success():
         return "Order not found"
 
     total = data["total_amount"]
+    customer_id = data["customer_id"]
 
-    # coins used from session
     coins_used = int(session.get("coins_used") or 0)
 
     payable_amount = total - coins_used
@@ -1408,8 +1319,48 @@ def order_success():
     if payable_amount < 0:
         payable_amount = 0
 
-    # ❌ REMOVE reward logic from here
-    # reward will be added when order delivered
+
+    if coins_used > 0:
+
+        cur.execute("""
+            SELECT balance
+            FROM customer_rewards
+            WHERE customer_id = %s
+            ORDER BY id DESC
+            LIMIT 1
+        """, (customer_id,))
+
+        row = cur.fetchone()
+
+        print("last row =", row)
+        current_balance = max(row["balance"], 0) if row else 0
+
+        
+
+        print("current_balance =", current_balance)
+
+        new_balance = current_balance - coins_used
+
+        print("new_balance =", new_balance)
+
+        if new_balance < 0:
+            new_balance = 0
+
+
+        cur.execute("""
+            INSERT INTO customer_rewards
+            (customer_id, order_id, points_added, points_used, balance)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (
+            customer_id,
+            order_id,
+            0,
+            coins_used,
+            new_balance
+        ))
+
+        mysql.connection.commit()
+
 
     cur.close()
 
@@ -1425,8 +1376,6 @@ def order_success():
         "order_success.html",
         order=order
     )
-
-
 @app.route("/admin/orders", methods=["GET", "POST"])
 def admin_orders():
     if "admin_id" not in session:

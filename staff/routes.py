@@ -2,6 +2,104 @@ import MySQLdb
 from flask import render_template, request, redirect, url_for,session
 from . import staff
 from extensions import mysql
+from email.message import EmailMessage
+import smtplib
+
+EMAIL_ADDRESS = "devadharshiniramachandran435@gmail.com"
+EMAIL_PASSWORD = "vadk tqhr arsr ltfi"
+
+
+
+# 1️⃣ Define the function once
+def send_status_email(to_email, order_id, order_date, status):
+
+    msg = EmailMessage()
+    msg["Subject"] = "🎉 Your Order Has Been Delivered!"
+    msg["From"] = EMAIL_ADDRESS
+    msg["To"] = to_email
+
+    # Plain text fallback
+    msg.set_content("Your order has been delivered successfully.")
+
+    # HTML DESIGN EMAIL
+    html_content = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; background:#f4f6f8; padding:20px;">
+
+        <div style="
+            max-width:600px;
+            margin:auto;
+            background:white;
+            border-radius:10px;
+            overflow:hidden;
+            box-shadow:0 0 10px rgba(0,0,0,0.1);
+        ">
+
+            <!-- Header -->
+            <div style="background:#28a745;color:white;padding:20px;text-align:center;">
+                <h2>Dish2Cart</h2>
+                <h3>✅ Order Delivered Successfully</h3>
+            </div>
+
+            <!-- Body -->
+            <div style="padding:25px;color:#333;">
+
+                <p>Hello Customer,</p>
+
+                <p>Your order has been <b style="color:green;">Delivered</b> 🎉</p>
+
+                <table style="width:100%;margin-top:15px;border-collapse:collapse;">
+                    <tr>
+                        <td style="padding:8px;"><b>Order ID</b></td>
+                        <td style="padding:8px;">#{order_id}</td>
+                    </tr>
+                    <tr style="background:#f2f2f2;">
+                        <td style="padding:8px;"><b>Order Date</b></td>
+                        <td style="padding:8px;">{order_date}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:8px;"><b>Status</b></td>
+                        <td style="padding:8px;color:green;"><b>{status}</b></td>
+                    </tr>
+                </table>
+
+                <p style="margin-top:20px;">
+                    Thank you for shopping with us ❤️<br>
+                    We hope to see you again!
+                </p>
+
+                <div style="text-align:center;margin-top:25px;">
+                    <a href="http://127.0.0.1:5000"
+                       style="
+                       background:#28a745;
+                       color:white;
+                       padding:12px 20px;
+                       text-decoration:none;
+                       border-radius:5px;
+                       font-weight:bold;">
+                       Continue Shopping
+                    </a>
+                </div>
+
+            </div>
+
+            <!-- Footer -->
+            <div style="background:#f1f1f1;padding:15px;text-align:center;font-size:12px;">
+                © 2026 Dish2Cart • Grocery Management System
+            </div>
+
+        </div>
+
+    </body>
+    </html>
+    """
+
+    msg.add_alternative(html_content, subtype="html")
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        server.send_message(msg)
+
 
 
 
@@ -317,20 +415,33 @@ def update_order_status():
         """, (order_id,))
 
         exists = cur.fetchone()
+    if not exists and coins > 0:
 
-        if not exists and coins > 0:
+    # get last balance
+        cur.execute("""
+        SELECT balance
+        FROM customer_rewards
+        WHERE customer_id = %s
+        ORDER BY id DESC
+        LIMIT 1
+    """, (customer_id,))
 
-            cur.execute("""
-                INSERT INTO customer_rewards
-                (customer_id, points_added, balance, order_id)
-                VALUES (%s,%s,%s,%s)
-            """, (
-                customer_id,
-                coins,
-                coins,
-                order_id
-            ))
+        row = cur.fetchone()
 
+        current_balance = row["balance"] if row else 0
+
+        new_balance = current_balance + coins
+
+        cur.execute("""
+        INSERT INTO customer_rewards
+        (customer_id, points_added, balance, order_id)
+        VALUES (%s,%s,%s,%s)
+    """, (
+        customer_id,
+        coins,
+        new_balance,
+        order_id
+    ))
     mysql.connection.commit()
     cur.close()
 
