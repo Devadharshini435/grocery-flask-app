@@ -512,19 +512,113 @@ def product_detail(pid):
 
             # Stay on product page after adding to cart
             return redirect(url_for('product_detail', pid=pid))
+# ✅ STEP 3: Get feedback list
+
+    cur = mysql.connection.cursor()
+
+    cur.execute("""
+    SELECT f.rating, f.comment, c.customer_name
+    FROM feedback f
+    JOIN customer c
+    ON f.customer_id = c.customer_id
+    WHERE f.product_id = %s
+""", (pid,))
+
+    feedbacks = cur.fetchall()
+
+
+# ✅ STEP 4: check can give feedback
+
+    can_feedback = False
+    order_id = None
+
+    cur.execute("""
+    SELECT id
+    FROM orders
+    WHERE product_id=%s
+    AND customer_id=%s
+    AND status='Delivered'
+""", (pid, user_id))
+
+    order = cur.fetchone()
+
+    if order:
+
+        order_id = order['id']
+
+        cur.execute("""
+        SELECT *
+        FROM feedback
+        WHERE product_id=%s
+        AND customer_id=%s
+        AND order_id=%s
+    """, (pid, user_id, order_id))
+
+        already = cur.fetchone()
+
+        if not already:
+            can_feedback = True
 
     cur.close()
 
-    # ✅ STEP 3: Calculate total price for display
+# ✅ STEP 5: total price
     total_price = product['price'] * quantity
 
     # ✅ STEP 4: Render template
     return render_template(
-        'product_detail.html',
-        product=product,
-        quantity=quantity,
-        total_price=total_price
-    )
+    'product_detail.html',
+    product=product,
+    quantity=quantity,
+    total_price=total_price,
+    feedbacks=feedbacks,
+    can_feedback=can_feedback,
+    order_id=order_id
+)
+@app.route("/add_feedback", methods=["POST"])
+def add_feedback():
+
+    if "customer_id" not in session:
+        return redirect(url_for("login"))
+
+    customer_id = session["customer_id"]
+
+    product_id = request.form["product_id"]
+    order_id = request.form["order_id"]
+    rating = request.form["rating"]
+    comment = request.form["comment"]
+
+    cur = mysql.connection.cursor()
+
+    # check already exists
+    cur.execute("""
+        SELECT *
+        FROM feedback
+        WHERE customer_id=%s
+        AND product_id=%s
+        AND order_id=%s
+    """, (customer_id, product_id, order_id))
+
+    already = cur.fetchone()
+
+    if not already:
+
+        cur.execute("""
+            INSERT INTO feedback
+            (customer_id, product_id, order_id, rating, comment)
+            VALUES (%s,%s,%s,%s,%s)
+        """, (
+            customer_id,
+            product_id,
+            order_id,
+            rating,
+            comment
+        ))
+
+        mysql.connection.commit()
+
+    cur.close()
+
+    return redirect(url_for("product_detail", pid=product_id))
 @app.route('/checkout')
 def checkout():
     buy_now = session.get('buy_now')
