@@ -5,8 +5,8 @@ from extensions import mysql
 from email.message import EmailMessage
 import smtplib
 
-EMAIL_ADDRESS = "devadharshiniramachandran435@gmail.com"
-EMAIL_PASSWORD = "vadk tqhr arsr ltfi"
+EMAIL_ADDRESS = "dish2cart.grocery@gmail.com"
+EMAIL_PASSWORD = "qsjd wjsn klgz qois"
 
 
 
