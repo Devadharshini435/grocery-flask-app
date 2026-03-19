@@ -77,7 +77,9 @@
           <ul class="dropdown-menu dropdown-menu-end">
             {% if session.get('customer_id') %}
               <li><a class="dropdown-item" href="/profile">My Profile</a></li>
-              <li><a class="dropdown-item" href="/logout">Logout</a></li>
+              <li>
+<a class="dropdown-item" href="{{ url_for('logout') }}">Logout</a>
+</li>
             {% else %}
               <li><a class="dropdown-item" href="/login">Login</a></li>
               <li><a class="dropdown-item" href="/register">Register</a></li>

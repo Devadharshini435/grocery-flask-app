@@ -357,10 +357,13 @@ def profile():
         reward_points=reward_points
     )
 # ---------- Logout ----------
-@app.route('/logout')
+@app.route("/logout")
 def logout():
-    session.clear()
-    return redirect(url_for('login'))
+    session.pop("customer_id", None)
+    session.pop("customer_name", None)
+    session.pop("customer_email", None)
+
+    return redirect(url_for("login"))
 
 
 # ---------- Products Page (optional) ----------
@@ -1470,153 +1473,6 @@ def order_success():
         "order_success.html",
         order=order
     )
-@app.route("/admin/orders", methods=["GET", "POST"])
-def admin_orders():
-    if "admin_id" not in session:
-        return redirect("/admin/login")
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    # ---------------- POST: update status + rewards ----------------
-    if request.method == "POST":
-        order_id = request.form["order_id"]
-        new_status = request.form["status"]
-
-        # Update order status
-        cur.execute(
-            "UPDATE orders SET status=? WHERE id=?",
-            (new_status, order_id)
-        )
-        conn.commit()
-
-        # Reward logic ONLY when Delivered
-        if new_status == "Delivered":
-
-            # Check reward flag
-            cur.execute(
-                "SELECT reward_given, user_id FROM orders WHERE id=?",
-                (order_id,)
-            )
-            reward_given, user_id = cur.fetchone()
-
-            if reward_given == 0:
-                # Calculate total amount
-                cur.execute("""
-                    SELECT SUM(quantity * price)
-                    FROM order_items
-                    WHERE order_id=?
-                """, (order_id,))
-                total_amount = cur.fetchone()[0] or 0
-
-                reward_points = int(total_amount // 100)
-
-                # Add reward points to user
-                cur.execute("""
-                    UPDATE users
-                    SET reward_points = reward_points + ?
-                    WHERE id=?
-                """, (reward_points, user_id))
-
-                # Mark reward as given
-                cur.execute("""
-                    UPDATE orders
-                    SET reward_given = 1
-                    WHERE id=?
-                """, (order_id,))
-
-                conn.commit()
-
-    # ---------------- GET: fetch orders ----------------
-    cur.execute("""
-        SELECT id, user_id, order_date, status
-        FROM orders
-        ORDER BY order_date DESC
-    """)
-    orders = cur.fetchall()
-
-    # Fetch products for each order
-    order_products = {}
-    for order in orders:
-        oid = order[0]
-        cur.execute("""
-            SELECT p.product_name, oi.quantity, oi.price
-            FROM order_items oi
-            JOIN products p ON oi.product_id = p.id
-            WHERE oi.order_id=?
-        """, (oid,))
-        order_products[oid] = cur.fetchall()
-
-    conn.close()
-
-    return render_template(
-        "admin_orders.html",
-        orders=orders,
-        order_products=order_products
-    )
-
-
-@app.route("/admin/users")
-def admin_users():
-    if "admin_id" not in session:
-        return redirect("/admin/login")
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT 
-            u.id,
-            u.name,
-            u.email,
-            u.reward_points,
-            COUNT(o.id) as total_orders
-        FROM users u
-        LEFT JOIN orders o ON u.id = o.user_id
-                 WHERE u.role = 'user'
-        GROUP BY u.id
-        ORDER BY u.id DESC
-    """)
-
-    users = cur.fetchall()
-    conn.close()
-
-    return render_template("admin_users.html", users=users)
-
-
-@app.route("/admin/logout")
-def admin_logout():
-    session.pop("admin_logged_in", None)
-    return redirect("/admin/login")
-
-
-@app.route("/admin/delete-product/<int:product_id>")
-def delete_product(product_id):
-    if not session.get("admin_logged_in"):
-        return redirect(url_for("admin_login"))
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    # Get image name before deleting product
-    cur.execute("SELECT image FROM products WHERE id=?", (product_id,))
-    product = cur.fetchone()
-
-    if product:
-        image_filename = product["image"]
-
-        # Delete product from DB
-        cur.execute("DELETE FROM products WHERE id=?", (product_id,))
-        conn.commit()
-
-        # Delete image file
-        image_path = os.path.join("static/uploads", image_filename)
-        if os.path.exists(image_path):
-            os.remove(image_path)
-
-    conn.close()
-    return redirect(url_for("admin_products"))
-
 
 if __name__ == "__main__":
     app.run(debug=True)

@@ -10,18 +10,54 @@ EMAIL_PASSWORD = "qsjd wjsn klgz qois"
 
 
 
-# 1️⃣ Define the function once
 def send_status_email(to_email, order_id, order_date, status):
 
+    status_lower = status.lower().strip()
+
+    # ✅ dynamic subject + color + message
+    if status_lower == "pending":
+        subject = "🕒 Order Pending"
+        title = "Order Pending"
+        color = "#ffc107"
+        message = "Your order is pending."
+
+    elif status_lower == "packed":
+        subject = "📦 Order Packed"
+        title = "Order Packed"
+        color = "#17a2b8"
+        message = "Your order has been packed."
+
+    elif status_lower == "shipped":
+        subject = "🚚 Order Shipped"
+        title = "Order Shipped"
+        color = "#007bff"
+        message = "Your order has been shipped."
+
+    elif status_lower == "delivered":
+        subject = "🎉 Order Delivered"
+        title = "Order Delivered Successfully"
+        color = "#28a745"
+        message = "Your order has been delivered 🎉"
+
+    elif status_lower == "cancelled":
+        subject = "❌ Order Cancelled"
+        title = "Order Cancelled"
+        color = "#dc3545"
+        message = "Your order has been cancelled."
+
+    else:
+        subject = "Order Update"
+        title = "Order Status Updated"
+        color = "#6c757d"
+        message = f"Order status changed to {status}"
+
     msg = EmailMessage()
-    msg["Subject"] = "🎉 Your Order Has Been Delivered!"
+    msg["Subject"] = subject
     msg["From"] = EMAIL_ADDRESS
     msg["To"] = to_email
 
-    # Plain text fallback
-    msg.set_content("Your order has been delivered successfully.")
+    msg.set_content(message)
 
-    # HTML DESIGN EMAIL
     html_content = f"""
     <html>
     <body style="font-family: Arial, sans-serif; background:#f4f6f8; padding:20px;">
@@ -35,57 +71,49 @@ def send_status_email(to_email, order_id, order_date, status):
             box-shadow:0 0 10px rgba(0,0,0,0.1);
         ">
 
-            <!-- Header -->
-            <div style="background:#28a745;color:white;padding:20px;text-align:center;">
+            <div style="background:{color};color:white;padding:20px;text-align:center;">
                 <h2>Dish2Cart</h2>
-                <h3>✅ Order Delivered Successfully</h3>
+                <h3>{title}</h3>
             </div>
 
-            <!-- Body -->
             <div style="padding:25px;color:#333;">
 
                 <p>Hello Customer,</p>
 
-                <p>Your order has been <b style="color:green;">Delivered</b> 🎉</p>
+                <p>{message}</p>
 
                 <table style="width:100%;margin-top:15px;border-collapse:collapse;">
                     <tr>
-                        <td style="padding:8px;"><b>Order ID</b></td>
-                        <td style="padding:8px;">#{order_id}</td>
+                        <td><b>Order ID</b></td>
+                        <td>#{order_id}</td>
                     </tr>
                     <tr style="background:#f2f2f2;">
-                        <td style="padding:8px;"><b>Order Date</b></td>
-                        <td style="padding:8px;">{order_date}</td>
+                        <td><b>Order Date</b></td>
+                        <td>{order_date}</td>
                     </tr>
                     <tr>
-                        <td style="padding:8px;"><b>Status</b></td>
-                        <td style="padding:8px;color:green;"><b>{status}</b></td>
+                        <td><b>Status</b></td>
+                        <td style="color:{color};"><b>{status}</b></td>
                     </tr>
                 </table>
-
-                <p style="margin-top:20px;">
-                    Thank you for shopping with us ❤️<br>
-                    We hope to see you again!
-                </p>
 
                 <div style="text-align:center;margin-top:25px;">
                     <a href="http://127.0.0.1:5000"
                        style="
-                       background:#28a745;
+                       background:{color};
                        color:white;
                        padding:12px 20px;
                        text-decoration:none;
                        border-radius:5px;
                        font-weight:bold;">
-                       Continue Shopping
+                       View Website
                     </a>
                 </div>
 
             </div>
 
-            <!-- Footer -->
             <div style="background:#f1f1f1;padding:15px;text-align:center;font-size:12px;">
-                © 2026 Dish2Cart • Grocery Management System
+                © 2026 Dish2Cart
             </div>
 
         </div>
@@ -99,8 +127,6 @@ def send_status_email(to_email, order_id, order_date, status):
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         server.send_message(msg)
-
-
 
 
 @staff.route("/staff/login", methods=["GET", "POST"])
@@ -390,7 +416,7 @@ def update_order_status():
     """, (new_status, order_id))
 
 
-    # ✅ SEND EMAIL FOR EVERY STATUS
+    # ✅ SEND EMAIL
     send_status_email(
         order["customer_email"],
         order_id,
@@ -415,38 +441,39 @@ def update_order_status():
         """, (order_id,))
 
         exists = cur.fetchone()
-    if not exists and coins > 0:
 
-    # get last balance
-        cur.execute("""
-        SELECT balance
-        FROM customer_rewards
-        WHERE customer_id = %s
-        ORDER BY id DESC
-        LIMIT 1
-    """, (customer_id,))
+        # ✅ FIX — inside same block
+        if not exists and coins > 0:
 
-        row = cur.fetchone()
+            # get last balance
+            cur.execute("""
+                SELECT balance
+                FROM customer_rewards
+                WHERE customer_id = %s
+                ORDER BY id DESC
+                LIMIT 1
+            """, (customer_id,))
 
-        current_balance = row["balance"] if row else 0
+            row = cur.fetchone()
 
-        new_balance = current_balance + coins
+            current_balance = row["balance"] if row else 0
+            new_balance = current_balance + coins
 
-        cur.execute("""
-        INSERT INTO customer_rewards
-        (customer_id, points_added, balance, order_id)
-        VALUES (%s,%s,%s,%s)
-    """, (
-        customer_id,
-        coins,
-        new_balance,
-        order_id
-    ))
+            cur.execute("""
+                INSERT INTO customer_rewards
+                (customer_id, points_added, balance, order_id)
+                VALUES (%s,%s,%s,%s)
+            """, (
+                customer_id,
+                coins,
+                new_balance,
+                order_id
+            ))
+
     mysql.connection.commit()
     cur.close()
 
     return redirect(url_for("staff.orders"))
-
 @staff.route("/staff/delete_product/<int:id>")
 def delete_product(id):
 
@@ -536,9 +563,9 @@ def customers():
         "staff_customers.html",
         customer=customer
     )
-@staff.route("/logout")
-def logout():
-
-    session.clear()
+@staff.route("/staff/logout")
+def staff_logout():
+    session.pop("staff_id", None)
+    session.pop("staff_name", None)
 
     return redirect(url_for("staff.staff_login"))
