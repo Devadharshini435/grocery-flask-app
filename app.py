@@ -260,41 +260,75 @@ def home():
     return render_template("home.html")
 
 # ---------- Login ----------
-
 @app.route("/login", methods=["GET", "POST"])
 def login():
+
+    # If already logged in → redirect
+    if "customer_id" in session:
+        return redirect(url_for("home"))
+
     if request.method == "POST":
+
+        # 🔹 Get form data
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "").strip()
+        remember = request.form.get("remember")
 
-        cursor = mysql.connection.cursor(pymysql.cursors.DictCursor)
-        cursor.execute(
-            "SELECT customer_id, customer_name, customer_email, customer_password "
-            "FROM customer WHERE customer_email = %s",
-            (email,)
-        )
-        user = cursor.fetchone()
-        cursor.close()
+        # 🔹 Basic validation
+        if not email or not password:
+            flash("Please fill in all fields", "error")
+            return redirect(url_for("login"))
 
+        try:
+            # 🔹 Database query
+            cursor = mysql.connection.cursor(pymysql.cursors.DictCursor)
+            cursor.execute(
+                """
+                SELECT 
+                    customer_id, 
+                    customer_name, 
+                    customer_email, 
+                    customer_password
+                FROM customer 
+                WHERE customer_email = %s
+                """,
+                (email,)
+            )
+            user = cursor.fetchone()
+            cursor.close()
+
+        except Exception as e:
+            print("DATABASE ERROR:", e)
+            flash("Something went wrong. Please try again.", "error")
+            return redirect(url_for("login"))
+
+        # ❌ User not found
         if not user:
-            print("NO USER FOUND")
-            return render_template("login.html", error="Invalid login details")
+            flash("Invalid email or password", "error")
+            return redirect(url_for("login"))
 
         db_password = str(user["customer_password"]).strip()
 
+        # ❌ Password mismatch
         if password != db_password:
-            print("PASSWORD MISMATCH")
-            return render_template("login.html", error="Invalid login details")
+            flash("Invalid email or password", "error")
+            return redirect(url_for("login"))
 
+        # ✅ Login success
         session["customer_id"] = user["customer_id"]
         session["customer_name"] = user["customer_name"]
         session["customer_email"] = user["customer_email"]
 
-        print("LOGIN SUCCESS")
+        # 🔹 Remember me
+        if remember:
+            session.permanent = True
+
+        flash(f"Welcome back, {user['customer_name']} 🎉", "success")
+
         return redirect(url_for("home"))
 
+    # 🔹 GET request
     return render_template("login.html")
-
 @app.context_processor
 def cart_count_processor():
     user_id = session.get("customer_id")  # FIXED KEY
@@ -1121,7 +1155,7 @@ def order_details(order_id):
 
     # 🔹 get customer address from customer table
     cur.execute("""
-        SELECT address, city, pincode
+        SELECT customer_name, phone, address, city, pincode
         FROM customer
         WHERE customer_id = %s
     """, (customer_id,))
