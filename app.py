@@ -1,10 +1,9 @@
 import email
-from flask import Flask, render_template, request, redirect, url_for, session,flash, sessions
+from flask import Flask, render_template, request, redirect, url_for, session, flash
 import sqlite3
 import pymysql
 pymysql.install_as_MySQLdb()
 from flask_mysqldb import MySQL
-from werkzeug.utils import secure_filename
 from functools import wraps
 import json
 import os
