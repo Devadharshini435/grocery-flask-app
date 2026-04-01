@@ -1,115 +1,193 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <title>My Profile</title>
 
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 
-<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
-<!-- Bootstrap -->
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
 
-<!-- Bootstrap Icons -->
-<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
 
-<style>
+        :root {
+            --emerald: #059669;
+            --emerald-light: #10b981;
+            --border: #e5e7eb;
+            --muted: #6b7280;
+            --radius: 16px;
+        }
 
-    .coin-pill {
-        border: 1.5px solid #d4af37;
-        color: #333;
-        padding: 6px 16px;
-        border-radius: 50px;
-        font-weight: 600;
-        background-color: #fff;
-    }
+        body {
+            font-family: 'Segoe UI', sans-serif;
+        }
 
-    .profile-card {
-        border-radius: 16px;
-    }
+        /* Background */
+        .bg-image {
+            background-image: url('/static/images/bg2.jpg');
+            background-size: cover;
+            background-position: center;
+            filter: blur(8px) brightness(0.7);
+            position: fixed;
+            inset: -20px;
+            z-index: -1;
+        }
 
-    .profile-avatar {
-        width: 80px;
-        height: 80px;
-        border-radius: 50%;
-        background-color: #e9ecef;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 36px;
-        color: #6c757d;
-        margin: auto;
-    }
+        /* Card */
+        .profile-card {
+            border-radius: var(--radius);
+            background: rgba(255,255,255,0.92);
+            backdrop-filter: blur(15px);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+            overflow: hidden;
+            animation: fadeUp 0.5s ease;
+        }
 
-    .profile-section {
-        border-top: 1px solid #eee;
-        padding-top: 15px;
-        margin-top: 15px;
-    }
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(25px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
 
-    .reward-box {
-        background: #f8f9fa;
-        border-radius: 12px;
-        padding: 12px 16px;
-    }
+        /* Header */
+        .profile-header {
+            background: linear-gradient(135deg, var(--emerald-light), var(--emerald));
+            padding: 30px 20px 60px;
+            text-align: center;
+            color: white;
+            position: relative;
+        }
 
-</style>
+        /* Avatar */
+        .profile-avatar {
+            width: 90px;
+            height: 90px;
+            border-radius: 50%;
+            background: white;
+            color: var(--emerald);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            position: absolute;
+            left: 50%;
+            bottom: -45px;
+            transform: translateX(-50%);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+        }
 
+        /* Body */
+        .profile-body {
+            padding: 60px 25px 25px;
+            text-align: center;
+        }
 
+        .profile-name {
+            font-weight: 700;
+            font-size: 20px;
+        }
+
+        .profile-email {
+            color: var(--muted);
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+
+        /* Reward Box */
+        .reward-box {
+            background: #f9fafb;
+            border-radius: 12px;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border: 1px solid var(--border);
+        }
+
+        .coin-pill {
+            background: linear-gradient(135deg, #facc15, #eab308);
+            color: #333;
+            padding: 6px 16px;
+            border-radius: 50px;
+            font-weight: 700;
+        }
+
+        /* Button */
+        .btn-main {
+            background: linear-gradient(135deg, var(--emerald-light), var(--emerald));
+            border: none;
+            border-radius: 10px;
+            padding: 12px;
+            color: white;
+            font-weight: 600;
+            transition: 0.3s;
+        }
+
+        .btn-main:hover {
+            background: linear-gradient(135deg, var(--emerald), #047857);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(5,150,105,0.3);
+        }
+
+    </style>
 </head>
 
-<body class="bg-light">
+<body>
+
+<div class="bg-image"></div>
 
 {% include 'navbar.html' %}
 
-<div class="container mt-5" style="max-width: 540px;">
+<div class="container mt-5" style="max-width: 480px;">
 
-<div class="card shadow-sm profile-card">
+    <div class="profile-card">
 
-    <div class="card-body">
+        <!-- HEADER -->
+        <div class="profile-header">
+            <h5>My Profile</h5>
 
-        <!-- Avatar -->
-        <div class="profile-avatar mb-3">
-            <i class="bi bi-person"></i>
+            <div class="profile-avatar">
+                <i class="bi bi-person"></i>
+            </div>
         </div>
 
-        <!-- Name -->
-        <h4 class="text-center mb-1">
-            {{ user.customer_name }}
-        </h4>
+        <!-- BODY -->
+        <div class="profile-body">
 
-        <p class="text-center text-muted mb-3">
-            {{ user.customer_email }}
-        </p>
-
-
-        <!-- Rewards -->
-        <div class="reward-box d-flex justify-content-between align-items-center">
-
-            <div class="d-flex align-items-center">
-                <i class="bi bi-coin text-warning fs-4 me-2"></i>
-                <span class="fw-semibold">Reward Coins</span>
+            <div class="profile-name">
+                {{ user.customer_name }}
             </div>
 
-            <span class="coin-pill">
-                {{ reward_points }}
-            </span>
+            <div class="profile-email">
+                {{ user.customer_email }}
+            </div>
+
+            <!-- Rewards -->
+            <div class="reward-box">
+                <div>
+                    <i class="bi bi-coin text-warning me-2"></i>
+                    Reward Coins
+                </div>
+
+                <div class="coin-pill">
+                    {{ reward_points }}
+                </div>
+            </div>
+
+            <!-- Button -->
+            <div class="d-grid">
+                <a href="/" class="btn btn-main">
+                    Continue Shopping
+                </a>
+            </div>
 
         </div>
-
-
-        <!-- Action -->
-        <div class="d-grid mt-4">
-            <a href="/" class="btn btn-primary btn-lg">
-                Continue Shopping
-            </a>
-        </div>
-
 
     </div>
-
-</div>
 
 </div>
 
