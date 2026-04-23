@@ -6,44 +6,22 @@
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
 <style>
-
-body{
-background:#f4f6f9;
-}
-
-.sidebar{
-height:100vh;
-width:220px;
-position:fixed;
-background:#343a40;
-padding-top:20px;
-}
-
-.sidebar a{
-color:white;
-padding:12px 20px;
-display:block;
-text-decoration:none;
-}
-
-.sidebar a:hover{
-background:#495057;
-}
-
-.content{
-margin-left:220px;
-padding:30px;
-}
-
+body{ background:#f4f6f9; font-family:'Segoe UI'; }
+.sidebar{ height:100vh;width:220px;position:fixed;background:#343a40;padding-top:20px; }
+.sidebar a{ color:#ddd;padding:12px;display:block;text-decoration:none; }
+.sidebar a:hover{ background:#495057;color:white; }
+.content{ margin-left:220px;padding:30px; }
+.card{ border:none;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1); }
+.table th{ background:#343a40;color:white;text-align:center; }
+.table td{ text-align:center;vertical-align:middle; }
+.items-list{ text-align:left; }
 </style>
 
 </head>
-
 <body>
 
 <div class="sidebar">
-
-<h4 class="text-white text-center">Staff Panel</h4>
+<h4 class="text-center text-white">Staff Panel</h4>
 <hr class="text-white">
 
 <a href="{{ url_for('staff.dashboard') }}">Dashboard</a>
@@ -52,141 +30,100 @@ padding:30px;
 <a href="{{ url_for('staff.suppliers') }}">Suppliers</a>
 <a href="{{ url_for('staff.customers') }}">Customers</a>
 <a href="{{ url_for('staff.staff_logout') }}">Logout</a>
-
 </div>
-
 
 <div class="content">
 
-<h2 class="mb-4">Orders</h2>
+<div class="d-flex justify-content-between mb-3">
 
-<!-- Tabs -->
+<h2>📦 Orders Management</h2>
 
-<ul class="nav nav-tabs">
+<div class="d-flex gap-2">
 
-<li class="nav-item">
-<button class="nav-link active" data-bs-toggle="tab" data-bs-target="#customer">
-Customer Wise
-</button>
-</li>
+<form method="GET">
+<select name="status" class="form-select" onchange="this.form.submit()">
+<option value="All">All</option>
+<option value="Pending" {% if selected_status=='Pending' %}selected{% endif %}>Pending</option>
+<option value="Shipped" {% if selected_status=='Shipped' %}selected{% endif %}>Shipped</option>
+<option value="Delivered" {% if selected_status=='Delivered' %}selected{% endif %}>Delivered</option>
+<option value="Cancelled" {% if selected_status=='Cancelled' %}selected{% endif %}>Cancelled</option>
+</select>
+</form>
 
-<li class="nav-item">
-<button class="nav-link" data-bs-toggle="tab" data-bs-target="#product">
-Product Wise
-</button>
-</li>
+<a href="{{ url_for('staff.orders_report', status=selected_status) }}" class="btn btn-success">
+📄 PDF
+</a>
 
-</ul>
+</div>
+</div>
 
-
-<div class="tab-content mt-3">
-
-<!-- Customer Wise Table -->
-
-<div class="tab-pane fade show active" id="customer">
-
+<div class="card p-3">
 <table class="table table-bordered">
 
 <thead>
 <tr>
-<th>Order ID</th>
+<th>ID</th>
 <th>Customer</th>
-<th>Address</th>
+<th>Items</th>
 <th>Total</th>
 <th>Status</th>
 <th>Update</th>
 </tr>
 </thead>
+
 <tbody>
-
 {% for order in orders %}
-
 <tr>
 
-<td>{{ order.id }}</td>
+<td>#{{ order.id }}</td>
 <td>{{ order.customer_name }}</td>
-<td>{{ order.address }}</td>
-<td>{{ order.total_amount }}</td>
 
-<td>{{ order.status }}</td>
+<td class="items-list">
+<ul>
+{% for item in order.order_items %}
+<li>{{ item.name }} (x{{ item.qty }}) - ₹{{ item.price }}</li>
+{% endfor %}
+</ul>
+</td>
+
+<td>₹{{ order.total_amount }}</td>
 
 <td>
+{% if order.status=='Pending' %}
+<span class="badge bg-warning">Pending</span>
+{% elif order.status=='Shipped' %}
+<span class="badge bg-info">Shipped</span>
+{% elif order.status=='Delivered' %}
+<span class="badge bg-success">Delivered</span>
+{% else %}
+<span class="badge bg-danger">Cancelled</span>
+{% endif %}
+</td>
 
+<td>
+{% if order.status in ['Delivered','Cancelled'] %}
+<button class="btn btn-secondary btn-sm" disabled>Locked</button>
+{% else %}
 <form method="POST" action="{{ url_for('staff.update_order_status') }}">
-
 <input type="hidden" name="order_id" value="{{ order.id }}">
-
 <select name="status" class="form-select form-select-sm">
-
 <option value="Pending">Pending</option>
 <option value="Shipped">Shipped</option>
 <option value="Delivered">Delivered</option>
 <option value="Cancelled">Cancelled</option>
-
 </select>
-
-<button class="btn btn-sm btn-primary mt-1">
-Update
-</button>
-
+<button class="btn btn-primary btn-sm mt-1">Update</button>
 </form>
-
+{% endif %}
 </td>
 
 </tr>
-
 {% endfor %}
-
 </tbody>
 
 </table>
-
-</div>
-
-
-<!-- Product Wise Table -->
-
-<div class="tab-pane fade" id="product">
-
-<table class="table table-bordered">
-
-<thead>
-<tr>
-<th>Customer</th>
-<th>Product</th>
-<th>Quantity</th>
-<th>Price</th>
-<th>Status</th>
-</tr>
-</thead>
-
-<tbody>
-
-{% for item in product_orders %}
-
-<tr>
-
-<td>{{ item.customer_id }}</td>
-<td>{{ item.product_name }}</td>
-<td>{{ item.quantity }}</td>
-<td>{{ item.price }}</td>
-<td>{{ item.status }}</td>
-
-</tr>
-
-{% endfor %}
-
-</tbody>
-
-</table>
-
 </div>
 
 </div>
-
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-
 </body>
 </html>

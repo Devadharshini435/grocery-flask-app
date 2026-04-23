@@ -4,56 +4,231 @@
     <title>Delivery Address</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f5f5f0;
+        }
+
+        .address-card {
+            background: #fff;
+            border: 0.5px solid #e0ddd5;
+            border-radius: 14px;
+            overflow: hidden;
+        }
+
+        .section-label {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+            color: #888780;
+            margin-bottom: 14px;
+        }
+
+        .form-section {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 0.5px solid #e0ddd5;
+        }
+
+        .form-label {
+            font-size: 13px;
+            color: #5f5e5a;
+            margin-bottom: 5px;
+        }
+
+        .form-control {
+            font-size: 14px;
+            border: 0.5px solid #d3d1c7;
+            border-radius: 8px;
+            padding: 9px 12px;
+            background: #fff;
+            color: #2c2c2a;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .form-control:focus {
+            border-color: #888780;
+            box-shadow: 0 0 0 3px rgba(136, 135, 128, 0.12);
+            outline: none;
+        }
+
+        .form-control::placeholder {
+            color: #b4b2a9;
+        }
+
+        textarea.form-control {
+            resize: none;
+        }
+
+        .form-footer {
+            padding: 1rem 1.5rem;
+            background: #f9f8f5;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .delivery-hint {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: #888780;
+        }
+
+        .btn-continue {
+            background: #2c2c2a;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 9px 20px;
+            font-size: 14px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.15s, transform 0.1s;
+        }
+
+        .btn-continue:hover {
+            background: #444441;
+            color: #fff;
+        }
+
+        .btn-continue:active {
+            transform: scale(0.98);
+        }
+
+        .page-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 1.5rem;
+        }
+
+        .page-header-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: #e6f1fb;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .page-header-title {
+            font-size: 18px;
+            font-weight: 500;
+            color: #2c2c2a;
+            margin: 0;
+        }
+
+        .page-header-sub {
+            font-size: 13px;
+            color: #888780;
+            margin: 0;
+        }
+    </style>
 </head>
 <body>
     {% include 'navbar.html' %}
 
-<div class="container mt-5">
-    <div class="row justify-content-center">
-        <div class="col-md-6">
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-6 col-lg-5">
 
-            <div class="card p-4 shadow">
-                <h4 class="mb-3">📍 Delivery Address</h4>
+                <div class="page-header">
+                    <div class="page-header-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                             stroke="#185fa5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                            <circle cx="12" cy="10" r="3"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="page-header-title">Delivery address</p>
+                        <p class="page-header-sub">Where should we send your order?</p>
+                    </div>
+                </div>
 
-                <form method="POST">
-    <div class="mb-3">
-        <label>Name</label>
-        <input type="text" name="name" class="form-control" required
-               value="{{ address['name'] if address else '' }}">
-    </div>
+                <div class="address-card">
+                    <form method="POST">
 
-    <div class="mb-3">
-        <label>Phone</label>
-        <input type="text" name="phone" class="form-control" required
-               value="{{ address['phone'] if address else '' }}">
-    </div>
+                        <!-- Contact Section -->
+                        <div class="form-section">
+                            <p class="section-label">Contact</p>
+                            <div class="row g-3">
+                                <div class="col-7">
+                                    <label class="form-label">Full name</label>
+                                    <input type="text" name="name" class="form-control"
+                                           placeholder="Priya Sharma" required
+                                           value="{{ address['name'] if address else '' }}">
+                                </div>
+                                <div class="col-5">
+                                    <label class="form-label">Phone</label>
+                                    <input type="text" name="phone" class="form-control"
+                                           placeholder="+91 98765 43210" required
+                                           value="{{ address['phone'] if address else '' }}">
+                                </div>
+                            </div>
+                        </div>
 
-    <div class="mb-3">
-        <label>Address</label>
-        <textarea name="address" class="form-control" required>{{ address['address'] if address else '' }}</textarea>
-    </div>
+                        <!-- Address Section -->
+                        <div class="form-section">
+                            <p class="section-label">Address</p>
+                            <div class="mb-3">
+                                <label class="form-label">Street address</label>
+                                <textarea name="address" class="form-control" rows="2"
+                                          placeholder="Flat 4B, Sunrise Apartments, MG Road"
+                                          required>{{ address['address'] if address else '' }}</textarea>
+                            </div>
+                            <div class="row g-3">
+                                <div class="col-7">
+                                    <label class="form-label">City</label>
+                                    <input type="text" name="city" class="form-control"
+                                           placeholder="Chennai" required
+                                           value="{{ address['city'] if address else '' }}">
+                                </div>
+                                <div class="col-5">
+                                    <label class="form-label">Pincode</label>
+                                    <input type="text" name="pincode" class="form-control"
+                                           placeholder="600001" required
+                                           value="{{ address['pincode'] if address else '' }}">
+                                </div>
+                            </div>
+                        </div>
 
-    <div class="mb-3">
-        <label>City</label>
-        <input type="text" name="city" class="form-control" required
-               value="{{ address['city'] if address else '' }}">
-    </div>
+                        <!-- Footer -->
+                        <div class="form-footer">
+                            <div class="delivery-hint">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                                     stroke="#888780" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="1" y="3" width="15" height="13" rx="1"/>
+                                    <path d="M16 8h4l3 5v3h-7V8z"/>
+                                    <circle cx="5.5" cy="18.5" r="2.5"/>
+                                    <circle cx="18.5" cy="18.5" r="2.5"/>
+                                </svg>
+                                Delivers in 3–5 business days
+                            </div>
+                            <button type="submit" class="btn-continue">
+                                Continue to payment
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                                     stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="9 18 15 12 9 6"/>
+                                </svg>
+                            </button>
+                        </div>
 
-    <div class="mb-3">
-        <label>Pincode</label>
-        <input type="text" name="pincode" class="form-control" required
-               value="{{ address['pincode'] if address else '' }}">
-    </div>
-
-    <button type="submit" class="btn btn-success w-100">Continue to Payment</button>
-</form>
-
+                    </form>
+                </div>
 
             </div>
-
         </div>
     </div>
-</div>
 
 </body>
 </html>

@@ -6,6 +6,7 @@ pymysql.install_as_MySQLdb()
 from flask_mysqldb import MySQL
 from functools import wraps
 import json
+from decimal import Decimal
 import os
 from datetime import datetime, timedelta
 import random,time
@@ -55,12 +56,14 @@ def register():
             cur.close()
             return render_template("register.html", error="Email already exists")
 
+        hashed_password = generate_password_hash(password)
+
         cur.execute(
             """
             INSERT INTO customer (customer_name, customer_email, customer_password)
             VALUES (%s, %s, %s)
             """,
-            (name, email, password)
+            (name, email, hashed_password)
         )
         mysql.connection.commit()
         cur.close()
@@ -81,19 +84,38 @@ def set_password():
             return "Passwords do not match"
 
         
-        name = session.get('name')   # ✅ Get name from session
         email = session.get('email')
         
+        hashed_password = generate_password_hash(password)
 
         conn = mysql.connection
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO customer (customer_name, customer_email, customer_password) VALUES (%s, %s, %s)",
-                       (name, email, password))
-        conn.commit()
-        cursor.close()
-        send_account_created_email(email, name)
-        session.clear()
-        return render_template("account_created.html")
+        
+        if session.get('reset_password'):
+            # Update existing user's password
+            cursor.execute("UPDATE customer SET customer_password = %s WHERE customer_email = %s",
+                           (hashed_password, email))
+            conn.commit()
+            cursor.close()
+            # Get name for email
+            cursor = conn.cursor()
+            cursor.execute("SELECT customer_name FROM customer WHERE customer_email = %s", (email,))
+            user = cursor.fetchone()
+            name = user['customer_name'] if user else 'User'
+            send_password_reset_email(email, name)
+            session.clear()
+            flash("Password reset successfully. Please login with your new password.", "success")
+            return redirect(url_for('login'))
+        else:
+            # Insert new user
+            name = session.get('name')
+            cursor.execute("INSERT INTO customer (customer_name, customer_email, customer_password) VALUES (%s, %s, %s)",
+                           (name, email, hashed_password))
+            conn.commit()
+            cursor.close()
+            send_account_created_email(email, name)
+            session.clear()
+            return render_template("account_created.html")
 
 
     return render_template('set_password.html')
@@ -243,6 +265,27 @@ Dish2Cart Team
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
         server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         server.send_message(msg)
+
+def send_password_reset_email(to_email, name):
+    msg = EmailMessage()
+    msg['Subject'] = "Password Reset Successful"
+    msg['From'] = EMAIL_ADDRESS
+    msg['To'] = to_email
+
+    msg.set_content(f"""
+Hi {name},
+
+Your password has been reset successfully.
+
+You can now log in with your new password.
+
+Thanks,
+Dish2Cart Team
+""")
+
+    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+        server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        server.send_message(msg)
 def generate_otp():
     return str(random.randint(100000, 999999))
 # Absolute database path
@@ -301,16 +344,23 @@ def login():
             print("DATABASE ERROR:", e)
             flash("Something went wrong. Please try again.", "error")
             return redirect(url_for("login"))
+        
+        
 
         # ❌ User not found
         if not user:
             flash("Invalid email or password", "error")
             return redirect(url_for("login"))
 
-        db_password = str(user["customer_password"]).strip()
+        db_password = user["customer_password"]
 
-        # ❌ Password mismatch
-        if password != db_password:
+# ✅ Handle both hashed + plain passwords
+        if db_password.startswith("pbkdf2:sha256"):
+            valid = check_password_hash(db_password, password)
+        else:
+            valid = (db_password == password)
+
+        if not valid:
             flash("Invalid email or password", "error")
             return redirect(url_for("login"))
 
@@ -319,7 +369,7 @@ def login():
         session["customer_name"] = user["customer_name"]
         session["customer_email"] = user["customer_email"]
 
-        # 🔹 Remember me
+        # 🔹 Remember me    
         if remember:
             session.permanent = True
 
@@ -398,47 +448,85 @@ def logout():
 
     return redirect(url_for("login"))
 
+# ---------- Forgot Password ----------
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        email = request.form['email'].strip().lower()
+
+        cur = mysql.connection.cursor()
+        cur.execute("SELECT customer_id FROM customer WHERE customer_email = %s", (email,))
+        user = cur.fetchone()
+        cur.close()
+
+        if not user:
+            return redirect(url_for('forgot_password', error="Email not found"))
+
+        # Generate OTP
+        otp = generate_otp()
+
+        # Store OTP
+        cur = mysql.connection.cursor()
+        cur.execute("DELETE FROM email_otp WHERE email = %s", (email,))
+        cur.execute("INSERT INTO email_otp (email, otp) VALUES (%s, %s)", (email, otp))
+        mysql.connection.commit()
+        cur.close()
+
+        # Send OTP email
+        send_otp_email(email, otp)
+
+        # Set session
+        session['email'] = email
+        session['reset_password'] = True
+
+        return redirect(url_for('verify_otp', email=email))
+
+    return render_template('forgot_password.html')
+
 
 # ---------- Products Page (optional) ----------
 
 @app.route('/products')
 def products():
-    # Step 1: Check if user is logged in
+    # Step 1: Check login
     if 'customer_id' not in session:
         flash("Please login to see products")
         return redirect(url_for('login'))
 
-    # Step 2: Check if Show More was clicked
+    # Step 2: Get query params
     show_all_category = request.args.get('category')
     show_all_flag = request.args.get('show_all')
 
-    # Step 3: Connect to MySQL database
-    cur = mysql.connection.cursor()
+    # Step 3: DB connection (FIXED)
+    import MySQLdb.cursors
+    cur = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
     cur.execute("SELECT * FROM products ORDER BY category")
     rows = cur.fetchall()
     cur.close()
 
-    # Step 4: Group products by category
+    # Step 4: Group by category
     from collections import defaultdict
     all_categories = defaultdict(list)
+
     for row in rows:
         all_categories[row['category']].append(row)
 
-    # Step 5: Limit products to 5 per category, unless Show More clicked
+    # Step 5: Limit products
     categories = {}
+
     for cat, items in all_categories.items():
         if show_all_flag and show_all_category == cat:
             categories[cat] = items
         else:
             categories[cat] = items[:5]
 
-    # Step 6: Render template
+    # Step 6: Render
     return render_template(
         'products.html',
         categories=categories,
         all_categories=all_categories
     )
-
 
 @app.route('/orders')
 def orders():
@@ -479,38 +567,38 @@ def search():
     )
 @app.route('/product/<int:pid>', methods=['GET', 'POST'])
 def product_detail(pid):
-    # ✅ STEP 0: Get logged-in user
+
+    # ✅ STEP 0: Check login
     user_id = session.get('customer_id')
     if not user_id:
         return redirect(url_for('login'))
 
-    # ✅ STEP 1: Get product details (MySQL)
-    cur = mysql.connection.cursor()
+    import MySQLdb.cursors
+    cur = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
-    cur.execute(
-        "SELECT * FROM products WHERE product_id = %s",
-        (pid,)
-    )
+    # ✅ STEP 1: Get product
+    cur.execute("""
+        SELECT * FROM products WHERE product_id = %s
+    """, (pid,))
     product = cur.fetchone()
 
     if not product:
         cur.close()
         return "Product not found"
 
-    quantity = 1  # default quantity
-    total_price = product['price'] * quantity
+    quantity = 1
 
-    # ✅ STEP 2: Handle form submission
+    # ✅ STEP 2: Handle POST (Buy / Add to Cart)
     if request.method == 'POST':
         quantity = int(request.form['quantity'])
         action = request.form.get('action')
 
-        # -------- STOCK CHECK --------
+        # 🚫 Stock check
         if product['stock'] == 0:
             cur.close()
             return redirect(url_for('product_detail', pid=pid))
 
-        # -------- BUY NOW --------
+        # 🛒 BUY NOW
         if action == 'buy':
             session['buy_now'] = {
                 'product_id': pid,
@@ -519,76 +607,68 @@ def product_detail(pid):
             cur.close()
             return redirect(url_for('checkout'))
 
-        # -------- ADD TO CART --------
+        # 🛒 ADD TO CART
         elif action == 'add_to_cart':
 
-            # Check if item already in cart
-            cur.execute(
-                "SELECT cart_id, quantity FROM cart WHERE customer_id = %s AND product_id = %s",
-                (user_id, pid)
-            )
+            cur.execute("""
+                SELECT cart_id, quantity
+                FROM cart
+                WHERE customer_id = %s AND product_id = %s
+            """, (user_id, pid))
+
             existing = cur.fetchone()
 
             if existing:
-                # Update quantity
                 new_qty = existing['quantity'] + quantity
-                cur.execute(
-                    "UPDATE cart SET quantity = %s WHERE cart_id = %s",
-                    (new_qty, existing['cart_id'])
-                )
+                cur.execute("""
+                    UPDATE cart SET quantity = %s
+                    WHERE cart_id = %s
+                """, (new_qty, existing['cart_id']))
             else:
-                # Insert new
-                cur.execute(
-                    "INSERT INTO cart (customer_id, product_id, quantity) VALUES (%s, %s, %s)",
-                    (user_id, pid, quantity)
-                )
+                cur.execute("""
+                    INSERT INTO cart (customer_id, product_id, quantity)
+                    VALUES (%s, %s, %s)
+                """, (user_id, pid, quantity))
 
             mysql.connection.commit()
             cur.close()
 
-            # Stay on product page after adding to cart
             return redirect(url_for('product_detail', pid=pid))
-# ✅ STEP 3: Get feedback list
 
-    cur = mysql.connection.cursor()
-
+    # ✅ STEP 3: Get feedbacks
     cur.execute("""
-    SELECT f.rating, f.comment, c.customer_name
-    FROM feedback f
-    JOIN customer c
-    ON f.customer_id = c.customer_id
-    WHERE f.product_id = %s
-""", (pid,))
-
+        SELECT f.rating, f.comment, c.customer_name
+        FROM feedback f
+        JOIN customer c ON f.customer_id = c.customer_id
+        WHERE f.product_id = %s
+    """, (pid,))
     feedbacks = cur.fetchall()
 
-
-# ✅ STEP 4: check can give feedback
-
+    # ✅ STEP 4: Check if user can give feedback (FIXED JOIN)
     can_feedback = False
     order_id = None
 
     cur.execute("""
-    SELECT id
-    FROM orders
-    WHERE product_id=%s
-    AND customer_id=%s
-    AND status='Delivered'
-""", (pid, user_id))
+        SELECT o.id
+        FROM orders o
+        JOIN order_items oi ON o.id = oi.order_id
+        WHERE oi.product_id = %s
+        AND o.customer_id = %s
+        AND o.status = 'Delivered'
+    """, (pid, user_id))
 
     order = cur.fetchone()
 
     if order:
-
         order_id = order['id']
 
         cur.execute("""
-        SELECT *
-        FROM feedback
-        WHERE product_id=%s
-        AND customer_id=%s
-        AND order_id=%s
-    """, (pid, user_id, order_id))
+            SELECT *
+            FROM feedback
+            WHERE product_id = %s
+            AND customer_id = %s
+            AND order_id = %s
+        """, (pid, user_id, order_id))
 
         already = cur.fetchone()
 
@@ -597,19 +677,19 @@ def product_detail(pid):
 
     cur.close()
 
-# ✅ STEP 5: total price
+    # ✅ STEP 5: Calculate total price
     total_price = product['price'] * quantity
 
-    # ✅ STEP 4: Render template
+    # ✅ FINAL RENDER
     return render_template(
-    'product_detail.html',
-    product=product,
-    quantity=quantity,
-    total_price=total_price,
-    feedbacks=feedbacks,
-    can_feedback=can_feedback,
-    order_id=order_id
-)
+        'product_detail.html',
+        product=product,
+        quantity=quantity,
+        total_price=total_price,
+        feedbacks=feedbacks,
+        can_feedback=can_feedback,
+        order_id=order_id
+    )
 @app.route("/add_feedback", methods=["POST"])
 def add_feedback():
 
@@ -977,12 +1057,10 @@ def place_order():
     cur = mysql.connection.cursor()
 
     try:
-
-        coins_used = session.get("coins_used", 0)
-        coins_used = int(coins_used)
+        coins_used = int(session.get("coins_used", 0))
+        payment_method = session.get("payment_method", "COD")
 
         buy_now = session.get('buy_now')
-        order_id = None
 
         # ================= BUY NOW =================
         if buy_now:
@@ -1003,42 +1081,33 @@ def place_order():
 
             total_amount = product['price'] * buy_now['quantity']
 
-            # ✅ insert order (no coins columns)
+            # ✅ Create ONE order
             cur.execute("""
-                INSERT INTO orders
-                (customer_id, product_id, quantity, price, total_amount, status)
-                VALUES (%s,%s,%s,%s,%s,'Placed')
-            """, (
-                customer_id,
-                buy_now['product_id'],
-                buy_now['quantity'],
-                product['price'],
-                total_amount
-            ))
+                INSERT INTO orders (customer_id, total_amount, status)
+                VALUES (%s,%s,'Placed')
+            """, (customer_id, total_amount))
 
             order_id = cur.lastrowid
 
-            payment_method = session.get("payment_method")
-
+            # ✅ Insert into order_items
             cur.execute("""
-                INSERT INTO payment
-                (order_id, customer_id, amount, payment_method, payment_status)
-                VALUES (%s,%s,%s,%s,'Paid')
+                INSERT INTO order_items (order_id, product_id, quantity, price)
+                VALUES (%s,%s,%s,%s)
             """, (
                 order_id,
-                customer_id,
-                total_amount,
-                payment_method
+                product['product_id'],
+                buy_now['quantity'],
+                product['price']
             ))
 
-            # ✅ update stock
+            # ✅ Update stock
             cur.execute("""
                 UPDATE products
                 SET stock = stock - %s
                 WHERE product_id = %s
             """, (
                 buy_now['quantity'],
-                buy_now['product_id']
+                product['product_id']
             ))
 
             session.pop('buy_now', None)
@@ -1049,57 +1118,46 @@ def place_order():
             cur.execute("""
                 SELECT c.product_id, c.quantity, p.price, p.stock
                 FROM cart c
-                JOIN products p
-                ON c.product_id = p.product_id
+                JOIN products p ON c.product_id = p.product_id
                 WHERE c.customer_id = %s
             """, (customer_id,))
 
             cart_items = cur.fetchall()
 
             if not cart_items:
-                raise Exception("Cart empty")
+                raise Exception("Cart is empty")
 
             total_amount = 0
 
+            # ✅ Calculate total
             for item in cart_items:
-
                 if item['stock'] < item['quantity']:
-                    raise Exception("Stock issue")
+                    raise Exception("Stock issue for product ID: {}".format(item['product_id']))
 
-                total = item['price'] * item['quantity']
-                total_amount += total
+                total_amount += item['price'] * item['quantity']
 
+            # ✅ Create ONE order
+            cur.execute("""
+                INSERT INTO orders (customer_id, total_amount, status)
+                VALUES (%s,%s,'Placed')
+            """, (customer_id, total_amount))
+
+            order_id = cur.lastrowid
+
+            # ✅ Insert all items
             for item in cart_items:
 
-                total = item['price'] * item['quantity']
-
                 cur.execute("""
-                    INSERT INTO orders
-                    (customer_id, product_id, quantity, price, total_amount, status)
-                    VALUES (%s,%s,%s,%s,%s,'Placed')
-                """, (
-                    customer_id,
-                    item['product_id'],
-                    item['quantity'],
-                    item['price'],
-                    total
-                ))
-
-                order_id = cur.lastrowid
-
-                payment_method = session.get("payment_method")
-
-                cur.execute("""
-                    INSERT INTO payment
-                    (order_id, customer_id, amount, payment_method, payment_status)
-                    VALUES (%s,%s,%s,%s,'Paid')
+                    INSERT INTO order_items (order_id, product_id, quantity, price)
+                    VALUES (%s,%s,%s,%s)
                 """, (
                     order_id,
-                    customer_id,
-                    total,
-                    payment_method
+                    item['product_id'],
+                    item['quantity'],
+                    item['price']
                 ))
 
+                # update stock
                 cur.execute("""
                     UPDATE products
                     SET stock = stock - %s
@@ -1109,17 +1167,57 @@ def place_order():
                     item['product_id']
                 ))
 
-            cur.execute(
-                "DELETE FROM cart WHERE customer_id=%s",
-                (customer_id,)
-            )
+            # clear cart
+            cur.execute("DELETE FROM cart WHERE customer_id = %s", (customer_id,))
 
-        # ✅ store reward usage in separate table
-        
+        # ================= PAYMENT =================
+        cur.execute("""
+            INSERT INTO payment
+            (order_id, customer_id, amount, payment_method, payment_status)
+            VALUES (%s,%s,%s,%s,'Paid')
+        """, (
+            order_id,
+            customer_id,
+            total_amount,
+            payment_method
+        ))
+
+        # ================= REWARD SYSTEM =================
+
+        coins_earned = int(total_amount * Decimal('0.05'))
+
+# get last balance
+        cur.execute("""
+    SELECT balance
+    FROM customer_rewards
+    WHERE customer_id = %s
+    ORDER BY id DESC
+    LIMIT 1
+""", (customer_id,))
+
+        row = cur.fetchone()
+        last_balance = row['balance'] if row else 0
+
+# calculate new balance
+        new_balance = last_balance - coins_used + coins_earned
+
+# insert new record
+        cur.execute("""
+    INSERT INTO customer_rewards 
+    (customer_id, points_added, points_used, balance, order_id)
+    VALUES (%s, %s, %s, %s, %s)
+""", (
+    customer_id,
+    coins_earned,
+    coins_used,
+    new_balance,
+    order_id
+))
+
+        # clear session coins
+        session.pop("coins_used", None)
 
         mysql.connection.commit()
-
-        
 
         return redirect(url_for('order_success', order_id=order_id))
 
@@ -1129,7 +1227,7 @@ def place_order():
 
     finally:
         cur.close()
-
+        
 @app.route('/order/<int:order_id>')
 def order_details(order_id):
 
@@ -1165,16 +1263,15 @@ def order_details(order_id):
 
     # 🔹 get product info
     cur.execute("""
-        SELECT
-            o.quantity,
-            o.price,
-            p.product_name,
-            p.image
-        FROM orders o
-        JOIN products p
-        ON o.product_id = p.product_id
-        WHERE o.id = %s
-    """, (order_id,))
+    SELECT
+        oi.quantity,
+        oi.price,
+        p.product_name,
+        p.image
+    FROM order_items oi
+    JOIN products p ON oi.product_id = p.product_id
+    WHERE oi.order_id = %s
+""", (order_id,))
 
     items = cur.fetchall()
 
@@ -1254,26 +1351,62 @@ def my_orders():
     if not customer_id:
         return redirect(url_for('login'))
 
-    cur = mysql.connection.cursor()
+    import MySQLdb.cursors
+    cur = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
     cur.execute("""
         SELECT
             o.id,
-            o.quantity,
-            o.price,
             o.total_amount,
             o.status,
             o.order_date,
+            oi.quantity,
+            oi.price,
             p.product_name,
             p.image
         FROM orders o
-        JOIN products p
-        ON o.product_id = p.product_id
+        JOIN order_items oi ON o.id = oi.order_id
+        JOIN products p ON oi.product_id = p.product_id
         WHERE o.customer_id = %s
         ORDER BY o.id DESC
     """, (customer_id,))
 
-    orders = cur.fetchall()
+    rows = cur.fetchall()
+
+    orders_dict = {}
+
+    for row in rows:
+        order_id = row['id']
+
+        if order_id not in orders_dict:
+            orders_dict[order_id] = {
+                "id": order_id,
+                "total_amount": row['total_amount'],
+                "status": row['status'],
+                "order_date": row['order_date'],
+                "items": []
+            }
+
+        orders_dict[order_id]["items"].append({
+            "product_name": row['product_name'],
+            "quantity": row['quantity'],
+            "price": row['price'],
+            "image": row['image']
+        })
+
+    # ✅ ADD DELIVERY LOGIC HERE
+    for order_id in orders_dict:
+        total = orders_dict[order_id]["total_amount"]
+
+        if total >= 500:
+            delivery_charge = 0
+        else:
+            delivery_charge = 40
+
+        orders_dict[order_id]["delivery_charge"] = delivery_charge
+        orders_dict[order_id]["final_total"] = total + delivery_charge
+
+    orders = list(orders_dict.values())
 
     cur.close()
 
@@ -1312,15 +1445,14 @@ def download_invoice(order_id):
 
     # ---------- Fetch product ----------
     cur.execute("""
-        SELECT
-            p.product_name,
-            o.quantity,
-            o.price
-        FROM orders o
-        JOIN products p
-        ON o.product_id = p.product_id
-        WHERE o.id = %s
-    """, (order_id,))
+    SELECT
+        p.product_name,
+        oi.quantity,
+        oi.price
+    FROM order_items oi
+    JOIN products p ON oi.product_id = p.product_id
+    WHERE oi.order_id = %s
+""", (order_id,))
 
     items = cur.fetchall()
 
@@ -1418,8 +1550,6 @@ def download_invoice(order_id):
 @app.route('/order_success')
 def order_success():
 
-    print("order_success called")
-
     order_id = request.args.get("order_id")
 
     if not order_id:
@@ -1428,10 +1558,10 @@ def order_success():
     cur = mysql.connection.cursor()
 
     cur.execute("""
-    SELECT total_amount, customer_id
-    FROM orders
-    WHERE id = %s
-""", (order_id,))
+        SELECT total_amount, customer_id
+        FROM orders
+        WHERE id = %s
+    """, (order_id,))
 
     data = cur.fetchone()
 
@@ -1440,7 +1570,6 @@ def order_success():
         return "Order not found"
 
     total = data["total_amount"]
-    customer_id = data["customer_id"]
 
     coins_used = int(session.get("coins_used") or 0)
 
@@ -1448,49 +1577,6 @@ def order_success():
 
     if payable_amount < 0:
         payable_amount = 0
-
-
-    if coins_used > 0:
-
-        cur.execute("""
-            SELECT balance
-            FROM customer_rewards
-            WHERE customer_id = %s
-            ORDER BY id DESC
-            LIMIT 1
-        """, (customer_id,))
-
-        row = cur.fetchone()
-
-        print("last row =", row)
-        current_balance = max(row["balance"], 0) if row else 0
-
-        
-
-        print("current_balance =", current_balance)
-
-        new_balance = current_balance - coins_used
-
-        print("new_balance =", new_balance)
-
-        if new_balance < 0:
-            new_balance = 0
-
-
-        cur.execute("""
-            INSERT INTO customer_rewards
-            (customer_id, order_id, points_added, points_used, balance)
-            VALUES (%s, %s, %s, %s, %s)
-        """, (
-            customer_id,
-            order_id,
-            0,
-            coins_used,
-            new_balance
-        ))
-
-        mysql.connection.commit()
-
 
     cur.close()
 

@@ -16,89 +16,25 @@
     <style>
         body {
             background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            min-height: 100vh;
-        }
-
-        .orders-header {
-            margin-bottom: 40px;
-            text-align: center;
-        }
-
-        .orders-header h1 {
-            font-size: 2.5rem;
-            font-weight: 700;
-            color: #333;
-            margin-bottom: 10px;
-        }
-
-        .orders-header p {
-            font-size: 1.1rem;
-            color: #6c757d;
         }
 
         .order-card {
             background: white;
-            border: none;
             border-left: 5px solid #28a745;
-            transition: all 0.3s ease;
             margin-bottom: 25px;
-            overflow: hidden;
+            transition: 0.3s;
         }
 
         .order-card:hover {
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
             transform: translateY(-5px);
-        }
-
-        .order-card.status-placed {
-            border-left-color: #ffc107;
-        }
-
-        .order-card.status-packed {
-            border-left-color: #0dcaf0;
-        }
-
-        .order-card.status-delivered {
-            border-left-color: #198754;
-        }
-
-        .order-card.status-cancelled {
-            border-left-color: #dc3545;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
         }
 
         .order-header {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            padding: 20px;
-            border-bottom: 1px solid #dee2e6;
+            padding: 15px;
+            background: #f8f9fa;
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 15px;
-        }
-
-        .order-id-link {
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: #28a745;
-            text-decoration: none;
-            transition: color 0.2s ease;
-        }
-
-        .order-id-link:hover {
-            color: #1e7e34;
-            text-decoration: underline;
-        }
-
-        .order-id-link i {
-            margin-right: 8px;
-        }
-
-        .status-badge {
-            font-size: 0.95rem;
-            padding: 8px 16px;
-            font-weight: 600;
-            border-radius: 20px;
         }
 
         .order-content {
@@ -108,225 +44,104 @@
         .order-item {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            gap: 15px;
             margin-bottom: 15px;
-        }
-
-        .item-info {
-            flex: 1;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
         }
 
         .item-name {
-            font-size: 1.05rem;
             font-weight: 600;
-            color: #333;
-            margin-bottom: 5px;
-        }
-
-        .item-quantity {
-            font-size: 0.95rem;
-            color: #6c757d;
         }
 
         .item-total {
-            font-weight: 700;
-            font-size: 1.2rem;
-            color: #28a745;
-        }
-
-        .item-total i {
-            margin-right: 3px;
-        }
-
-        .order-actions {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-top: 15px;
-            padding-top: 15px;
-            border-top: 1px solid #e9ecef;
-        }
-
-        .order-actions .btn {
-            transition: all 0.3s ease;
-            font-weight: 600;
-        }
-
-        .order-actions .btn:hover {
-            transform: translateY(-2px);
-        }
-
-        .empty-state {
-            background: white;
-            border-radius: 15px;
-            padding: 80px 30px;
-            text-align: center;
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.08);
-            margin-top: 30px;
-        }
-
-        .empty-state i {
-            font-size: 4rem;
-            color: #ccc;
-            margin-bottom: 20px;
-            display: block;
-        }
-
-        .empty-state h3 {
-            color: #333;
-            font-weight: 700;
-            margin-bottom: 12px;
-        }
-
-        .empty-state p {
-            color: #6c757d;
-            font-size: 1.05rem;
-            margin-bottom: 30px;
-        }
-
-        .empty-state .btn {
-            padding: 12px 40px;
-            font-weight: 600;
-            transition: all 0.3s ease;
-        }
-
-        .empty-state .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(40, 167, 69, 0.3);
-        }
-
-        .page-content {
-            padding: 30px 0;
-        }
-
-        @media (max-width: 768px) {
-            .orders-header h1 {
-                font-size: 1.8rem;
-            }
-
-            .order-header {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-
-            .order-item {
-                flex-direction: column;
-                align-items: flex-start;
-            }
+            color: green;
+            font-weight: bold;
         }
     </style>
 </head>
 
-<body class="bg-light">
+<body>
 
 {% include 'navbar.html' %}
 
-<div class="page-content">
-    <div class="container">
+<div class="container mt-5">
 
-        <!-- Page Header -->
-        <div class="orders-header">
-            <h1><i class="bi bi-box-seam"></i> My Orders</h1>
-            <p>Track and manage all your purchases</p>
-        </div>
+    <h2 class="text-center mb-4">My Orders</h2>
 
-        {% if orders %}
+    {% if orders %}
 
-            {% for order in orders %}
+        {% for order in orders %}
 
-            <div class="order-card status-{% if order.status == 'Placed' %}placed{% elif order.status == 'Packed' %}packed{% elif order.status == 'Delivered' %}delivered{% elif order.status == 'Cancelled' %}cancelled{% endif %}">
+        <div class="order-card">
 
-                <!-- ORDER HEADER -->
-                <div class="order-header">
+            <!-- HEADER -->
+            <div class="order-header">
+                <div>
+                    <strong>Order #{{ order.id }}</strong><br>
+                    <small>{{ order.order_date }}</small>
+                </div>
+
+                <div>
+                    <span class="badge bg-success">{{ order.status }}</span>
+                </div>
+            </div>
+
+            <!-- CONTENT -->
+            <div class="order-content">
+
+                {% for item in order["items"] %}
+
+                <div class="order-item">
 
                     <div>
-                        <a href="{{ url_for('order_details', order_id=order.id) }}" class="order-id-link">
-                            <i class="bi bi-box"></i> Order #{{ order.id }}
-                        </a>
+                        <div class="item-name">{{ item.product_name }}</div>
+                        <small>Qty: {{ item.quantity }}</small>
                     </div>
 
-                    <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
-
-                        <!-- Status Badge -->
-                        <span class="badge status-badge
-                            {% if order.status == 'Placed' %} bg-warning text-dark
-                            {% elif order.status == 'Packed' %} bg-info
-                            {% elif order.status == 'Delivered' %} bg-success
-                            {% elif order.status == 'Cancelled' %} bg-danger
-                            {% else %} bg-secondary
-                            {% endif %}
-                        ">
-                            <i class="
-                                {% if order.status == 'Placed' %} bi bi-clock-history
-                                {% elif order.status == 'Packed' %} bi bi-box2-heart
-                                {% elif order.status == 'Delivered' %} bi bi-check-circle
-                                {% elif order.status == 'Cancelled' %} bi bi-x-circle
-                                {% else %} bi bi-question-circle
-                                {% endif %}
-                            "></i>
-                            {{ order.status }}
-                        </span>
-
+                    <div class="item-total">
+                        ₹{{ item.price * item.quantity }}
                     </div>
 
                 </div>
 
-                <!-- ORDER CONTENT -->
-                <div class="order-content">
+                {% endfor %}
 
-                    <!-- ORDER ITEM -->
-                    <div class="order-item">
+                <!-- TOTAL -->
+                <div class="text-end fw-bold mt-2">
+                    Total: ₹{{ order.total_amount }}
+                </div>
 
-                        <div class="item-info">
-                            <div class="item-name">{{ order.product_name }}</div>
-                            <div class="item-quantity">
-                                <i class="bi bi-box"></i> Quantity: <strong>{{ order.quantity }}</strong>
-                            </div>
-                        </div>
+                <!-- ACTIONS -->
+                <div class="mt-3">
+                    <a href="{{ url_for('order_details', order_id=order.id) }}"
+                       class="btn btn-sm btn-primary">View</a>
 
-                        <div class="item-total">
-                            <i class="bi bi-currency-rupee"></i>{{ order.price * order.quantity }}
-                        </div>
-
-                    </div>
-
-                    <!-- ACTION BUTTONS -->
-                    <div class="order-actions">
-                        <a href="{{ url_for('order_details', order_id=order.id) }}" class="btn btn-sm btn-outline-primary">
-                            <i class="bi bi-eye"></i> View Details
-                        </a>
-
-                        {% if order.status == 'Placed' %}
-                        <a href="{{ url_for('cancel_order', order_id=order.id) }}"
-                           class="btn btn-sm btn-outline-danger"
-                           onclick="return confirm('Are you sure you want to cancel this order?');">
-                            <i class="bi bi-x-circle"></i> Cancel Order
-                        </a>
-                        {% endif %}
-                    </div>
-
+                    {% if order.status == 'Placed' %}
+                    <a href="{{ url_for('cancel_order', order_id=order.id) }}"
+                       class="btn btn-sm btn-danger"
+                       onclick="return confirm('Cancel this order?');">
+                       Cancel
+                    </a>
+                    {% endif %}
                 </div>
 
             </div>
 
-            {% endfor %}
+        </div>
 
-        {% else %}
+        {% endfor %}
 
-            <!-- Empty State -->
-            <div class="empty-state">
-                <i class="bi bi-inbox"></i>
-                <h3>No Orders Yet</h3>
-                <p>You haven't placed any orders yet. Start shopping now!</p>
-                <a href="{{ url_for('products') }}" class="btn btn-success btn-lg">
-                    <i class="bi bi-shop"></i> Browse Products
-                </a>
-            </div>
+    {% else %}
 
-        {% endif %}
+        <div class="text-center mt-5">
+            <h4>No Orders Found</h4>
+            <a href="{{ url_for('products') }}" class="btn btn-success mt-3">
+                Shop Now
+            </a>
+        </div>
 
-    </div>
+    {% endif %}
+
 </div>
 
 </body>

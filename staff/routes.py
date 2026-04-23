@@ -4,6 +4,10 @@ from . import staff
 from extensions import mysql
 from email.message import EmailMessage
 import smtplib
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+
+pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))
 
 EMAIL_ADDRESS = "dish2cart.grocery@gmail.com"
 EMAIL_PASSWORD = "qsjd wjsn klgz qois"
@@ -195,9 +199,9 @@ def dashboard():
     cur.execute("SELECT COUNT(*) AS total FROM orders")
     total_orders = cur.fetchone()["total"]
 
-    # placed orders
-    cur.execute("SELECT COUNT(*) AS placed FROM orders WHERE status='Placed'")
-    placed_orders = cur.fetchone()["placed"]
+    # pending orders
+    cur.execute("SELECT COUNT(*) AS pending FROM orders WHERE status='Pending'")
+    pending_orders = cur.fetchone()["pending"]
 
     # packed orders
     cur.execute("SELECT COUNT(*) AS packed FROM orders WHERE status='Packed'")
@@ -207,6 +211,7 @@ def dashboard():
     cur.execute("SELECT COUNT(*) AS total FROM products")
     total_products = cur.fetchone()["total"]
 
+    # recent orders
     cur.execute("""
     SELECT 
         o.id,
@@ -216,11 +221,11 @@ def dashboard():
         o.order_date,
         c.customer_name
     FROM orders o
-    JOIN customer c
-    ON o.customer_id = c.customer_id
+    JOIN customer c ON o.customer_id = c.customer_id
     ORDER BY o.order_date DESC
     LIMIT 5
-""")
+    """)
+
     recent_orders = cur.fetchall()
 
     cur.close()
@@ -228,7 +233,7 @@ def dashboard():
     return render_template(
         "dashboard.html",
         total_orders=total_orders,
-        placed_orders=placed_orders,
+        pending_orders=pending_orders,
         packed_orders=packed_orders,
         total_products=total_products,
         recent_orders=recent_orders
@@ -244,53 +249,213 @@ def products():
 
     return render_template("staff_products.html", products=products)
 
-@staff.route("/staff/orders")
+from flask import request, render_template, redirect, url_for, send_file
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
+import io
+
+# =========================
+# ORDERS PAGE
+# =========================
+@staff.route('/staff/orders')
 def orders():
+
+    status_filter = request.args.get('status')
 
     cur = mysql.connection.cursor()
 
-    # ✅ Customer Wise Orders
-    cur.execute("""
-        SELECT 
-            o.id,
-            o.customer_id,
-            c.customer_name,
-            c.address,
-            o.total_amount,
-            o.status,
-            o.order_date
-        FROM orders o
-        JOIN customer c
-        ON o.customer_id = c.customer_id
-        ORDER BY o.order_date DESC
-    """)
+    query = """
+    SELECT 
+        o.id,
+        o.total_amount,
+        o.status,
+        o.order_date,
+        c.customer_name,
+        c.address,
+        p.product_name,
+        oi.quantity,
+        oi.price
+    FROM orders o
+    JOIN customer c ON o.customer_id = c.customer_id
+    JOIN order_items oi ON o.id = oi.order_id
+    JOIN products p ON oi.product_id = p.product_id
+    """
 
-    orders = cur.fetchall()
+    if status_filter and status_filter != "All":
+        query += " WHERE o.status = %s"
+        cur.execute(query + " ORDER BY o.id DESC", (status_filter,))
+    else:
+        cur.execute(query + " ORDER BY o.id DESC")
 
+    data = cur.fetchall()
 
-    # ✅ Product Wise Orders (merged table)
-    cur.execute("""
-        SELECT 
-            o.id,
-            o.customer_id,
-            p.product_name,
-            o.quantity,
-            o.price,
-            o.status
-        FROM orders o
-        JOIN products p
-        ON o.product_id = p.product_id
-    """)
+    # ✅ Group orders
+    orders_dict = {}
 
-    product_orders = cur.fetchall()
+    for row in data:
+        order_id = row['id']
 
-    cur.close()
+        if order_id not in orders_dict:
+            orders_dict[order_id] = {
+                "id": row['id'],
+                "customer_name": row['customer_name'],
+                "address": row['address'],
+                "total_amount": row['total_amount'],
+                "status": row['status'],
+                "order_items": []
+            }
+
+        orders_dict[order_id]["order_items"].append({
+            "name": row['product_name'],
+            "qty": row['quantity'],
+            "price": row['price']
+        })
+
+    orders = list(orders_dict.values())
 
     return render_template(
-        "staff/orders.html",
+        'staff/orders.html',
         orders=orders,
-        product_orders=product_orders
+        selected_status=status_filter
     )
+
+
+# =========================
+# UPDATE STATUS
+# =========================
+@staff.route('/staff/update_order_status', methods=['POST'])
+def update_order_status():
+    order_id = request.form['order_id']
+    new_status = request.form['status']
+
+    cur = mysql.connection.cursor()
+
+    cur.execute("SELECT status FROM orders WHERE id=%s", (order_id,))
+    current_status = cur.fetchone()['status']
+
+    # ❌ prevent editing completed
+    if current_status in ['Delivered', 'Cancelled']:
+        return redirect(url_for('staff.orders'))
+
+    cur.execute("UPDATE orders SET status=%s WHERE id=%s", (new_status, order_id))
+    mysql.connection.commit()
+
+    return redirect(url_for('staff.orders'))
+
+
+# =========================
+# PDF REPORT
+# =========================
+@staff.route('/staff/orders/report')
+def orders_report():
+
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+    import io
+
+    # ✅ Register Unicode font (fix ₹)
+    pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))
+
+    status_filter = request.args.get('status')
+
+    cur = mysql.connection.cursor()
+
+    query = """
+    SELECT 
+        o.id,
+        o.total_amount,
+        o.status,
+        o.order_date,
+        c.customer_name,
+        c.address,
+        p.product_name,
+        oi.quantity,
+        oi.price
+    FROM orders o
+    JOIN customer c ON o.customer_id = c.customer_id
+    JOIN order_items oi ON o.id = oi.order_id
+    JOIN products p ON oi.product_id = p.product_id
+    """
+
+    if status_filter and status_filter != "All":
+        query += " WHERE o.status = %s"
+        cur.execute(query, (status_filter,))
+    else:
+        cur.execute(query)
+
+    data = cur.fetchall()
+
+    # ✅ Group orders (same logic)
+    orders_dict = {}
+
+    for row in data:
+        order_id = row['id']
+
+        if order_id not in orders_dict:
+            orders_dict[order_id] = {
+                "customer": row['customer_name'],
+                "address": row['address'],
+                "total": row['total_amount'],
+                "status": row['status'],
+                "date": row['order_date'],
+                "items": []
+            }
+
+        orders_dict[order_id]["items"].append(
+            f"{row['product_name']} (x{row['quantity']})"
+        )
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer)
+    elements = []
+    styles = getSampleStyleSheet()
+
+    # Title
+    elements.append(Paragraph("Orders Report", styles['Title']))
+    elements.append(Spacer(1, 10))
+
+    if status_filter:
+        elements.append(Paragraph(f"Filter: {status_filter}", styles['Normal']))
+        elements.append(Spacer(1, 10))
+
+    # Table
+    table_data = [["ID", "Customer", "Address", "Items", "Total", "Status", "Date"]]
+
+    for order_id, order in orders_dict.items():
+        items_text = ", ".join(order["items"])
+
+        table_data.append([
+            str(order_id),
+            order["customer"],
+            order["address"],
+            items_text,
+            f"₹{order['total']}",   # ✅ rupee fixed
+            order["status"],
+            str(order["date"])
+        ])
+
+    table = Table(table_data, repeatRows=1)
+
+    table.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (-1,-1), 'STSong-Light'),  # ✅ apply font
+        ('BACKGROUND', (0,0), (-1,0), colors.grey),
+        ('TEXTCOLOR',(0,0),(-1,0),colors.white),
+        ('GRID', (0,0), (-1,-1), 1, colors.black),
+    ]))
+
+    elements.append(table)
+
+    doc.build(elements)
+    buffer.seek(0)
+
+    return send_file(buffer,
+                     as_attachment=True,
+                     download_name="orders_report.pdf",
+                     mimetype='application/pdf')
 
 @staff.route("/staff/edit_product/<int:id>", methods=["GET","POST"])
 def edit_product(id):
@@ -373,107 +538,7 @@ def add_product():
 
     return render_template("staff/add_product.html")
 
-import MySQLdb.cursors
 
-@staff.route("/staff/update_order_status", methods=["POST"])
-def update_order_status():
-
-    order_id = request.form["order_id"]
-    new_status = request.form["status"]
-
-    cur = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-
-    # ✅ get order + email + date
-    cur.execute("""
-    SELECT 
-        o.id,
-        o.status,
-        o.customer_id,
-        o.total_amount,
-        o.order_date,
-        c.customer_email
-    FROM orders o
-    JOIN customer c
-        ON o.customer_id = c.customer_id
-    WHERE o.id = %s
-    """, (order_id,))
-
-    order = cur.fetchone()
-
-    if not order:
-        cur.close()
-        return redirect(url_for("staff.orders"))
-
-    old_status = order["status"]
-    customer_id = order["customer_id"]
-    total = float(order["total_amount"] or 0)
-
-    # ✅ update status
-    cur.execute("""
-        UPDATE orders
-        SET status = %s
-        WHERE id = %s
-    """, (new_status, order_id))
-
-
-    # ✅ SEND EMAIL
-    send_status_email(
-        order["customer_email"],
-        order_id,
-        order["order_date"],
-        new_status
-    )
-
-
-    # ✅ ADD REWARD ONLY WHEN DELIVERED
-    if (
-        new_status.strip().lower() == "delivered"
-        and old_status.strip().lower() != "delivered"
-    ):
-
-        coins = int(total // 100)
-
-        # check already rewarded
-        cur.execute("""
-            SELECT id
-            FROM customer_rewards
-            WHERE order_id = %s
-        """, (order_id,))
-
-        exists = cur.fetchone()
-
-        # ✅ FIX — inside same block
-        if not exists and coins > 0:
-
-            # get last balance
-            cur.execute("""
-                SELECT balance
-                FROM customer_rewards
-                WHERE customer_id = %s
-                ORDER BY id DESC
-                LIMIT 1
-            """, (customer_id,))
-
-            row = cur.fetchone()
-
-            current_balance = row["balance"] if row else 0
-            new_balance = current_balance + coins
-
-            cur.execute("""
-                INSERT INTO customer_rewards
-                (customer_id, points_added, balance, order_id)
-                VALUES (%s,%s,%s,%s)
-            """, (
-                customer_id,
-                coins,
-                new_balance,
-                order_id
-            ))
-
-    mysql.connection.commit()
-    cur.close()
-
-    return redirect(url_for("staff.orders"))
 @staff.route("/staff/delete_product/<int:id>")
 def delete_product(id):
 
